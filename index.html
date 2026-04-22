@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Exchange Market Cap</title>
+  <style>
+    :root {
+      --bg: #08131b;
+      --panel: rgba(9, 22, 31, 0.96);
+      --line: rgba(151, 183, 198, 0.16);
+      --text: #eef6fa;
+      --muted: #96adba;
+      --accent: #75ddff;
+      --chip: rgba(255, 255, 255, 0.06);
+      --shadow: 0 24px 72px rgba(0, 0, 0, 0.3);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: "Segoe UI", "Apple SD Gothic Neo", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(38, 133, 159, 0.22), transparent 28%),
+        radial-gradient(circle at top right, rgba(242, 188, 86, 0.12), transparent 20%),
+        linear-gradient(150deg, #041019 0%, #08131b 38%, #0d2230 100%);
+    }
+
+    .shell {
+      width: min(1360px, calc(100vw - 24px));
+      margin: 12px auto 24px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(8, 18, 25, 0.96), rgba(7, 17, 23, 0.98));
+      box-shadow: var(--shadow);
+    }
+
+    .panel {
+      margin-bottom: 14px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--panel);
+    }
+
+    .hero, .controls {
+      padding: 18px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(117, 221, 255, 0.08);
+      color: var(--accent);
+      font-size: 13px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 14px 0 10px;
+      font-size: clamp(30px, 5vw, 48px);
+      line-height: 1;
+      letter-spacing: -0.04em;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .stat {
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .stat-label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+      .stat-value {
+        margin-top: 8px;
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+
+      .auto-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .auto-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(117, 221, 255, 0.18);
+        background: rgba(117, 221, 255, 0.06);
+        color: var(--text);
+        font-size: 13px;
+      }
+
+      .auto-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #57d98c;
+        box-shadow: 0 0 10px rgba(87, 217, 140, 0.55);
+      }
+
+
+    .tabs, .row, .pages {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+      button, input, select {
+        font: inherit;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      input, select {
+        width: min(380px, 100%);
+        padding: 12px 14px;
+        outline: none;
+      }
+
+      select {
+        color: var(--text);
+        background: rgba(10, 24, 33, 0.96);
+      }
+
+      option {
+        color: var(--text);
+        background: #0b1821;
+      }
+
+    button {
+      padding: 11px 14px;
+      cursor: pointer;
+    }
+
+    .tab.active, .page.active {
+      background: rgba(117, 221, 255, 0.12);
+      border-color: rgba(117, 221, 255, 0.28);
+      color: var(--accent);
+    }
+
+      .meta {
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 14px;
+      }
+
+      .compare-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(220px, 280px));
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .field label {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+    .status {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .table-wrap {
+      overflow: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 980px;
+    }
+
+      thead th {
+        text-align: left;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .sortable-th {
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .sortable-th:hover {
+        color: var(--text);
+      }
+
+      .sort-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .sort-arrow {
+        font-size: 12px;
+        opacity: 0.9;
+      }
+
+    tbody td {
+      padding: 18px;
+      border-bottom: 1px solid rgba(151, 183, 198, 0.14);
+      vertical-align: middle;
+    }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .rank {
+      width: 70px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .coin-name {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .coin-pair {
+      margin-top: 6px;
+      color: #b9cbd6;
+      font-size: 13px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--chip);
+      color: #bbd2dd;
+    }
+
+    .cap-main {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .cap-sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .source {
+      color: #bbd2dd;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .empty {
+      padding: 60px 20px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .footer-note {
+      padding: 14px 18px 18px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 900px) {
+        .summary {
+          grid-template-columns: 1fr;
+        }
+
+      }
+
+    @media (max-width: 640px) {
+      .shell {
+        width: calc(100vw - 12px);
+        margin: 6px auto 18px;
+        padding: 8px;
+        border-radius: 18px;
+      }
+
+      .panel, .hero, .controls {
+        border-radius: 16px;
+      }
+
+        .meta {
+          align-items: flex-start;
+        }
+
+        input, select {
+          width: 100%;
+        }
+
+        .compare-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="panel hero">
+      <span class="eyebrow" id="eyebrow"></span>
+      <h1 id="title"></h1>
+      <p id="heroDescription"></p>
+      <div class="summary">
+        <article class="stat">
+          <div class="stat-label" id="statLabelBinance"></div>
+          <div class="stat-value" id="statBinance">-</div>
+        </article>
+        <article class="stat">
+          <div class="stat-label" id="statLabelUpbit"></div>
+          <div class="stat-value" id="statUpbit">-</div>
+        </article>
+          <article class="stat">
+            <div class="stat-label" id="statLabelBithumb"></div>
+            <div class="stat-value" id="statBithumb">-</div>
+          </article>
+        </div>
+        <div class="auto-strip">
+          <div class="auto-pill"><span class="auto-dot"></span><span id="autoUpdateStatus"></span></div>
+          <div class="auto-pill" id="lastUpdatedStatus"></div>
+        </div>
+      </section>
+
+      <section class="panel controls">
+        <div class="tabs" id="tabs">
+        <button class="tab active" data-board="binance" id="tabBinance"></button>
+        <button class="tab" data-board="upbit" id="tabUpbit"></button>
+        <button class="tab" data-board="bithumb" id="tabBithumb"></button>
+      </div>
+      <div class="compare-grid">
+        <div class="field">
+          <label for="baseBoardSelect" id="compareBaseLabel"></label>
+          <select id="baseBoardSelect">
+            <option value="binance"></option>
+            <option value="upbit"></option>
+            <option value="bithumb"></option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="compareBoardSelect" id="compareTargetLabel"></label>
+          <select id="compareBoardSelect">
+            <option value="" id="compareNoneOption"></option>
+            <option value="binance"></option>
+            <option value="upbit"></option>
+            <option value="bithumb"></option>
+          </select>
+        </div>
+      </div>
+        <div class="row meta">
+          <div class="row">
+            <input id="searchInput" type="search" />
+          </div>
+          <div class="status" id="statusText"></div>
+        </div>
+      </section>
+
+      <section class="panel table-wrap">
+        <table>
+        <thead>
+          <tr>
+            <th class="rank" id="thRank"></th>
+            <th id="thCoin"></th>
+            <th id="thSymbol"></th>
+            <th id="thCap"></th>
+            <th id="thSource"></th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+      <div class="footer-note" id="footerNote"></div>
+    </section>
+
+    <section class="panel controls">
+      <div class="pages" id="pagination"></div>
+    </section>
+  </main>
+
+  <script src="./data.js"></script>
+  <script>
+    const TEXT = {
+      eyebrow: "Exchange Market Cap",
+      title: "\uAC70\uB798\uC18C \uCF54\uC778 \uC2DC\uCD1D \uC21C\uC704",
+      defaultDescription: "\uAC70\uB798\uC18C\uBCC4 \uC0C1\uC7A5 \uCF54\uC778\uACFC \uC2DC\uCD1D \uB370\uC774\uD130\uB97C \uC815\uC801 \uD30C\uC77C\uB85C \uC800\uC7A5\uD574 \uB450\uACE0 \uD45C\uC2DC\uD569\uB2C8\uB2E4.",
+      statLabelBinance: "\uBC14\uC774\uB0B8\uC2A4 USDT",
+      statLabelUpbit: "\uC5C5\uBE44\uD2B8 KRW",
+      statLabelBithumb: "\uBE57\uC378 KRW",
+        tabBinance: "\uBC14\uC774\uB0B8\uC2A4 USDT",
+        tabUpbit: "\uC5C5\uBE44\uD2B8 KRW",
+        tabBithumb: "\uBE57\uC378 KRW",
+        compareBaseLabel: "\uAE30\uC900\uAC70\uB798\uC18C",
+        compareTargetLabel: "\uBE44\uAD50\uAC70\uB798\uC18C",
+        compareNone: "\uBE44\uAD50 \uC548 \uD568",
+        autoUpdateOn: "\uC790\uB3D9 \uAC31\uC2E0 \uCF1C\uC9D0",
+        autoUpdateEvery: "{minutes}\uBD84\uB9C8\uB2E4 \uB370\uC774\uD130 \uAC31\uC2E0",
+        lastUpdated: "\uB9C8\uC9C0\uB9C9 \uB370\uC774\uD130 \uAC31\uC2E0: {time}",
+        placeholder: "\uCF54\uC778\uBA85, \uC2EC\uBCFC, \uD398\uC5B4 \uAC80\uC0C9",
+        thRank: "\uC21C\uBC88",
+        thCoin: "\uCF54\uC778",
+      thSymbol: "\uC2EC\uBCFC",
+      thCap: "\uC2DC\uCD1D",
+      thSource: "\uC2DC\uCD1D \uCD9C\uCC98",
+      empty: "\uD45C\uC2DC\uD560 \uCF54\uC778\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
+      unknown: "\uBBF8\uD655\uC778",
+      noCap: "\uC2DC\uCD1D \uC815\uBCF4 \uC5C6\uC74C",
+      footer:
+        "\uB370\uC774\uD130 \uC0DD\uC131 \uC2DC\uAC01: {time} | \uBC14\uC774\uB0B8\uC2A4\uB294 \uBC14\uC774\uB0B8\uC2A4 \uAC00\uACA9 \uD398\uC774\uC9C0 \uC2E4\uC81C \uC2DC\uCD1D\uC744 \uC0AC\uC6A9\uD569\uB2C8\uB2E4. \uC5C5\uBE44\uD2B8\uB294 \uC815\uBCF4 \uD0ED \uC2DC\uCD1D \uAC12 \uC911 CMC\uB97C \uC6B0\uC120 \uC0AC\uC6A9\uD569\uB2C8\uB2E4. \uBE57\uC378\uC740 \uBA54\uC778 \uC624\uB298\uC758 \uC2DC\uC138 \uC601\uC5ED\uC5D0\uC11C \uC4F0\uB294 \uC2DC\uCD1D(CoinMarketCap \uC81C\uACF5)\uC744 \uC0AC\uC6A9\uD569\uB2C8\uB2E4.",
+      binanceNote: "\uBC14\uC774\uB0B8\uC2A4 \uAC00\uACA9 \uD398\uC774\uC9C0\uC758 \uC2E4\uC81C \uC2DC\uCD1D",
+      upbitNote: "\uC5C5\uBE44\uD2B8 \uC815\uBCF4 \uD0ED \uC2DC\uCD1D, CMC \uC6B0\uC120",
+      bithumbNote: "\uBE57\uC378 \uBA54\uC778 \uC624\uB298\uC758 \uC2DC\uC138 \uC2DC\uCD1D(CoinMarketCap \uC81C\uACF5)",
+    };
+
+      const PAGE_SIZE = 100;
+      const AUTO_REFRESH_MS = 60 * 60 * 1000;
+      const state = {
+        board: "binance",
+        page: 1,
+        query: "",
+        sortDirection: "desc",
+        compareBoard: "",
+      };
+
+    const data = window.BOARD_DATA || { boards: { binance: [], upbit: [], bithumb: [] }, stats: {}, notes: {} };
+    const tabs = document.getElementById("tabs");
+    const searchInput = document.getElementById("searchInput");
+    const tableBody = document.getElementById("tableBody");
+    const pagination = document.getElementById("pagination");
+    const statusText = document.getElementById("statusText");
+      const footerNote = document.getElementById("footerNote");
+      const heroDescription = document.getElementById("heroDescription");
+      const statBinance = document.getElementById("statBinance");
+      const statUpbit = document.getElementById("statUpbit");
+      const statBithumb = document.getElementById("statBithumb");
+      const autoUpdateStatus = document.getElementById("autoUpdateStatus");
+      const lastUpdatedStatus = document.getElementById("lastUpdatedStatus");
+      const thCap = document.getElementById("thCap");
+      const baseBoardSelect = document.getElementById("baseBoardSelect");
+      const compareBoardSelect = document.getElementById("compareBoardSelect");
+
+      document.getElementById("eyebrow").textContent = TEXT.eyebrow;
+      document.getElementById("title").textContent = TEXT.title;
+    heroDescription.textContent = TEXT.defaultDescription;
+    document.getElementById("statLabelBinance").textContent = TEXT.statLabelBinance;
+    document.getElementById("statLabelUpbit").textContent = TEXT.statLabelUpbit;
+    document.getElementById("statLabelBithumb").textContent = TEXT.statLabelBithumb;
+      document.getElementById("tabBinance").textContent = TEXT.tabBinance;
+      document.getElementById("tabUpbit").textContent = TEXT.tabUpbit;
+      document.getElementById("tabBithumb").textContent = TEXT.tabBithumb;
+      document.getElementById("compareBaseLabel").textContent = TEXT.compareBaseLabel;
+      document.getElementById("compareTargetLabel").textContent = TEXT.compareTargetLabel;
+      document.getElementById("compareNoneOption").textContent = TEXT.compareNone;
+      baseBoardSelect.options[0].textContent = TEXT.tabBinance;
+      baseBoardSelect.options[1].textContent = TEXT.tabUpbit;
+      baseBoardSelect.options[2].textContent = TEXT.tabBithumb;
+      compareBoardSelect.options[1].textContent = TEXT.tabBinance;
+      compareBoardSelect.options[2].textContent = TEXT.tabUpbit;
+      compareBoardSelect.options[3].textContent = TEXT.tabBithumb;
+      baseBoardSelect.value = state.board;
+      compareBoardSelect.value = state.compareBoard;
+      searchInput.placeholder = TEXT.placeholder;
+      document.getElementById("thRank").textContent = TEXT.thRank;
+      document.getElementById("thCoin").textContent = TEXT.thCoin;
+    document.getElementById("thSymbol").textContent = TEXT.thSymbol;
+      function renderCapHeader() {
+        thCap.classList.add("sortable-th");
+        thCap.innerHTML = `<span class="sort-label">${TEXT.thCap}<span class="sort-arrow">${
+          state.sortDirection === "asc" ? "\u25BC" : "\u25B2"
+        }</span></span>`;
+        thCap.title =
+          state.sortDirection === "asc"
+            ? "클릭하면 시총 높은순으로 정렬"
+            : "클릭하면 시총 낮은순으로 정렬";
+      }
+
+      renderCapHeader();
+      document.getElementById("thSource").textContent = TEXT.thSource;
+
+    function formatNumber(value, digits = 0) {
+      if (!Number.isFinite(value)) return "-";
+      return new Intl.NumberFormat("ko-KR", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: digits,
+      }).format(value);
+    }
+
+    function formatUsdShort(value) {
+      if (!Number.isFinite(value)) return TEXT.unknown;
+      if (value >= 1_000_000_000_000) return `$${formatNumber(value / 1_000_000_000_000, 2)}T`;
+      if (value >= 1_000_000_000) return `$${formatNumber(value / 1_000_000_000, 2)}B`;
+      if (value >= 1_000_000) return `$${formatNumber(value / 1_000_000, 2)}M`;
+      return `$${formatNumber(value, 0)}`;
+    }
+
+    function formatKrwShort(value) {
+      if (!Number.isFinite(value)) return TEXT.unknown;
+      if (value >= 1_0000_0000_0000) {
+        const jo = Math.floor(value / 1_0000_0000_0000);
+        const eok = Math.floor((value % 1_0000_0000_0000) / 1_0000_0000);
+        return eok > 0 ? `${jo}\uC870 ${formatNumber(eok, 0)}\uC5B5\uC6D0` : `${jo}\uC870\uC6D0`;
+      }
+      if (value >= 1_0000_0000) return `${formatNumber(value / 1_0000_0000, 1)}\uC5B5\uC6D0`;
+      if (value >= 1_0000) return `${formatNumber(value / 1_0000, 1)}\uB9CC\uC6D0`;
+      return `${formatNumber(value, 0)}\uC6D0`;
+    }
+
+    function capDisplay(row) {
+      if (row.nativeCurrency === "KRW") {
+        return {
+          main: formatKrwShort(Number(row.marketCapKrw)),
+          sub: formatUsdShort(Number(row.marketCapUsd)),
+        };
+      }
+      return {
+        main: formatUsdShort(Number(row.marketCapUsd)),
+        sub: formatKrwShort(Number(row.marketCapKrw)),
+      };
+    }
+
+    function sourceLabel(code) {
+      const map = {
+        binance_exact: "\uBC14\uC774\uB0B8\uC2A4 \uC2E4\uC81C \uC2DC\uCD1D",
+        upbit_cmc: "\uC5C5\uBE44\uD2B8 CMC",
+        upbit_coingecko: "\uC5C5\uBE44\uD2B8 CoinGecko",
+        upbit_project: "\uC5C5\uBE44\uD2B8 \uD504\uB85C\uC81D\uD2B8\uD300",
+        upbit_fill_from_bithumb: "\uC5C5\uBE44\uD2B8 \uBBF8\uC81C\uACF5, \uBE57\uC378 \uBCF4\uC815",
+        upbit_missing: "\uC5C5\uBE44\uD2B8 \uBBF8\uC81C\uACF5",
+        upbit_fetch_failed: "\uC5C5\uBE44\uD2B8 \uC870\uD68C \uC2E4\uD328",
+        bithumb_missing: "\uBE57\uC378 \uC2DC\uCD1D \uBBF8\uD655\uC778",
+        bithumb_coinmarketcap: "\uBE57\uC378 CoinMarketCap",
+      };
+      return map[code] || code || "-";
+    }
+
+    function sourceDetailLabel(code) {
+      const map = {
+        binance_symbol_list: "Binance symbol list",
+        zeta_same_symbol_fill: "ZETA same-symbol fill",
+        bithumb_main_today_price: "Bithumb main today price",
+      };
+      return map[code] || code || "";
+    }
+
+      function noteLabel(code) {
+        const map = {
+          binance_exact_market_cap: TEXT.binanceNote,
+          upbit_info_tab_cmc_first: TEXT.upbitNote,
+          bithumb_main_coinmarketcap_feed: TEXT.bithumbNote,
+        };
+        return map[code] || TEXT.defaultDescription;
+      }
+
+      function boardLabel(board) {
+        const map = {
+          binance: TEXT.tabBinance,
+          upbit: TEXT.tabUpbit,
+          bithumb: TEXT.tabBithumb,
+        };
+        return map[board] || board || "-";
+      }
+
+      function formatDateTime(timestampSeconds) {
+        if (!Number.isFinite(timestampSeconds)) return "-";
+        return new Date(timestampSeconds * 1000).toLocaleString("ko-KR");
+      }
+
+      function renderAutoStatus() {
+        const minutes = Number(data.autoRefreshMinutes) || 60;
+        autoUpdateStatus.textContent = `${TEXT.autoUpdateOn} · ${TEXT.autoUpdateEvery.replace("{minutes}", String(minutes))}`;
+        lastUpdatedStatus.textContent = TEXT.lastUpdated.replace("{time}", formatDateTime(data.generatedAt));
+      }
+
+      function getCompareSymbolSet(board) {
+        const rows = data.boards[board] || [];
+        return new Set(rows.map((item) => String(item.symbol || "").toUpperCase()));
+      }
+
+        function getRows() {
+          const rows = data.boards[state.board] || [];
+          const compareSymbols = state.compareBoard ? getCompareSymbolSet(state.compareBoard) : null;
+          const compared = state.compareBoard
+            ? rows.filter((row) => {
+                return compareSymbols.has(String(row.symbol || "").toUpperCase());
+              })
+            : [...rows];
+
+          const filtered = !state.query.trim()
+            ? compared
+            : compared.filter((row) => {
+                const query = state.query.trim().toLowerCase();
+                return [row.name, row.symbol, row.pair, row.englishName, row.koreanName, row.capSource]
+                  .filter(Boolean)
+                .some((value) => String(value).toLowerCase().includes(query));
+            });
+
+        return filtered.sort((a, b) => {
+          const aMissing = !Number.isFinite(a.sortCapUsd);
+          const bMissing = !Number.isFinite(b.sortCapUsd);
+
+          if (aMissing && bMissing) {
+            return String(a.symbol || "").localeCompare(String(b.symbol || ""));
+          }
+          if (aMissing) return 1;
+          if (bMissing) return -1;
+
+          if (state.sortDirection === "asc") {
+            return a.sortCapUsd - b.sortCapUsd || String(a.symbol || "").localeCompare(String(b.symbol || ""));
+          }
+
+          return b.sortCapUsd - a.sortCapUsd || String(a.symbol || "").localeCompare(String(b.symbol || ""));
+        });
+      }
+
+    function renderPagination(totalPages) {
+      pagination.innerHTML = "";
+      if (totalPages <= 1) return;
+      for (let page = 1; page <= totalPages; page += 1) {
+        const button = document.createElement("button");
+        button.className = `page${page === state.page ? " active" : ""}`;
+        button.textContent = String(page);
+        button.addEventListener("click", () => {
+          state.page = page;
+          render();
+        });
+        pagination.appendChild(button);
+      }
+    }
+
+    function renderTable(rows) {
+      if (!rows.length) {
+        tableBody.innerHTML = `<tr><td class="empty" colspan="5">${TEXT.empty}</td></tr>`;
+        return;
+      }
+
+      tableBody.innerHTML = rows
+        .map((row, index) => {
+          const rank = (state.page - 1) * PAGE_SIZE + index + 1;
+          const cap = capDisplay(row);
+          const sourceDetailText = sourceDetailLabel(row.capSourceDetail);
+          const sourceDetail = sourceDetailText ? `<div class="muted">${sourceDetailText}</div>` : "";
+          return `
+            <tr>
+              <td class="rank">${rank}</td>
+              <td>
+                <div class="coin-name">${row.name}</div>
+                <div class="coin-pair">${row.pair}</div>
+              </td>
+              <td><span class="chip">${row.symbol}</span></td>
+              <td>
+                <div class="cap-main">${cap.main || TEXT.unknown}</div>
+                <div class="cap-sub">${cap.sub || TEXT.noCap}</div>
+              </td>
+              <td class="source">
+                <div>${sourceLabel(row.capSource)}</div>
+                ${sourceDetail}
+              </td>
+            </tr>
+          `;
+        })
+        .join("");
+    }
+
+      function render() {
+        const rows = getRows();
+        const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+      if (state.page > totalPages) state.page = 1;
+      const start = (state.page - 1) * PAGE_SIZE;
+      const pageRows = rows.slice(start, start + PAGE_SIZE);
+
+      renderTable(pageRows);
+      renderPagination(totalPages);
+
+        Array.from(tabs.querySelectorAll(".tab")).forEach((button) => {
+          button.classList.toggle("active", button.dataset.board === state.board);
+        });
+
+        baseBoardSelect.value = state.board;
+        compareBoardSelect.value = state.compareBoard;
+
+        const withCapCount = rows.filter((row) => Number.isFinite(row.sortCapUsd)).length;
+        statusText.textContent = state.compareBoard
+          ? `\uACF5\uD1B5 \uC0C1\uC7A5 ${formatNumber(rows.length, 0)}\uAC1C | \uAE30\uC900 ${boardLabel(state.board)} | \uBE44\uAD50 ${boardLabel(state.compareBoard)} | \uC2DC\uCD1D \uD655\uC778 ${formatNumber(withCapCount, 0)}\uAC1C | ${state.page} / ${totalPages} \uD398\uC774\uC9C0`
+          : `\uCD1D ${formatNumber(rows.length, 0)}\uAC1C | \uC2DC\uCD1D \uD655\uC778 ${formatNumber(withCapCount, 0)}\uAC1C | ${state.page} / ${totalPages} \uD398\uC774\uC9C0`;
+
+        const generatedAt = data.generatedAt
+          ? new Date(data.generatedAt * 1000).toLocaleString("ko-KR")
+          : "-";
+        heroDescription.textContent = state.compareBoard
+          ? `${boardLabel(state.board)}\uC5D0 \uC0C1\uC7A5\uB41C \uCF54\uC778 \uC911 ${boardLabel(state.compareBoard)}\uC5D0\uB3C4 \uC0C1\uC7A5\uB41C \uCF54\uC778\uB9CC \uD45C\uC2DC\uD569\uB2C8\uB2E4.`
+          : noteLabel(data.notes[state.board]);
+        footerNote.textContent = TEXT.footer.replace("{time}", generatedAt);
+      }
+
+      tabs.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-board]");
+        if (!button) return;
+        state.board = button.dataset.board;
+        state.page = 1;
+        render();
+      });
+
+      baseBoardSelect.addEventListener("change", (event) => {
+        state.board = event.target.value || "binance";
+        state.page = 1;
+        render();
+      });
+
+      compareBoardSelect.addEventListener("change", (event) => {
+        state.compareBoard = event.target.value || "";
+        state.page = 1;
+        render();
+      });
+
+      searchInput.addEventListener("input", (event) => {
+        state.query = event.target.value || "";
+        state.page = 1;
+        render();
+      });
+
+      thCap.addEventListener("click", () => {
+        state.sortDirection = state.sortDirection === "desc" ? "asc" : "desc";
+        state.page = 1;
+        renderCapHeader();
+        render();
+      });
+
+      statBinance.textContent = `${formatNumber(data.stats.binance?.total || 0, 0)} / ${formatNumber(data.stats.binance?.withCap || 0, 0)}`;
+      statUpbit.textContent = `${formatNumber(data.stats.upbit?.total || 0, 0)} / ${formatNumber(data.stats.upbit?.withCap || 0, 0)}`;
+      statBithumb.textContent = `${formatNumber(data.stats.bithumb?.total || 0, 0)} / ${formatNumber(data.stats.bithumb?.withCap || 0, 0)}`;
+      renderAutoStatus();
+      window.setTimeout(() => window.location.reload(), AUTO_REFRESH_MS);
+      render();
+    </script>
+  </body>
+  </html>
