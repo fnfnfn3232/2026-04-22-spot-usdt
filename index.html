@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
@@ -28,6 +28,10 @@
         linear-gradient(150deg, #041019 0%, #08131b 38%, #0d2230 100%);
     }
 
+    body.locked {
+      overflow: hidden;
+    }
+
     .shell {
       width: min(1360px, calc(100vw - 24px));
       margin: 12px auto 24px;
@@ -36,6 +40,110 @@
       border-radius: 24px;
       background: linear-gradient(180deg, rgba(8, 18, 25, 0.96), rgba(7, 17, 23, 0.98));
       box-shadow: var(--shadow);
+    }
+
+    body.locked .shell {
+      filter: blur(6px);
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .site-lock {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(3, 10, 15, 0.72);
+      backdrop-filter: blur(3px);
+    }
+
+    .site-lock.hidden {
+      display: none;
+    }
+
+    .lock-card {
+      width: min(420px, calc(100vw - 32px));
+      border: 1px solid rgba(151, 183, 198, 0.3);
+      border-radius: 18px;
+      padding: 18px;
+      background: rgba(9, 22, 31, 0.96);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    }
+
+    .lock-title {
+      margin: 0 0 8px;
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+
+    .lock-desc {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .lock-form {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+    }
+
+    .lock-form input {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .lock-error {
+      margin-top: 8px;
+      min-height: 20px;
+      color: #ff9a9a;
+      font-size: 13px;
+    }
+
+    .lock-ttl-wrap {
+      position: fixed;
+      top: 10px;
+      right: 14px;
+      z-index: 4000;
+      display: grid;
+      gap: 6px;
+      justify-items: end;
+    }
+
+    .lock-ttl {
+      padding: 8px 12px;
+      border: 1px solid rgba(117, 221, 255, 0.25);
+      border-radius: 999px;
+      background: rgba(9, 22, 31, 0.85);
+      color: #cce8f3;
+      font-size: 12px;
+      letter-spacing: 0.01em;
+    }
+
+    .lock-extend-btn {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(117, 221, 255, 0.25);
+      background: rgba(9, 22, 31, 0.85);
+      color: #d6edf7;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .lock-extend-btn:hover {
+      border-color: rgba(117, 221, 255, 0.45);
+      color: #eff9ff;
+    }
+
+    .lock-extend-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     .panel {
@@ -65,6 +173,42 @@
       font-size: clamp(30px, 5vw, 48px);
       line-height: 1;
       letter-spacing: -0.04em;
+      cursor: pointer;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .title-left {
+      min-width: 0;
+    }
+
+    .view-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 2px;
+    }
+
+    .view-link {
+      border: none;
+      background: transparent;
+      padding: 0;
+      color: var(--muted);
+      font-size: clamp(22px, 3vw, 28px);
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      cursor: pointer;
+      line-height: 1.05;
+    }
+
+    .view-link.active {
+      color: var(--accent);
     }
 
     p {
@@ -168,6 +312,10 @@
       color: var(--accent);
     }
 
+    .news-toggle.active {
+      color: var(--accent);
+    }
+
       .meta {
         justify-content: space-between;
         align-items: center;
@@ -193,19 +341,189 @@
         font-weight: 600;
       }
 
-    .status {
-      color: var(--muted);
-      font-size: 14px;
-    }
+      .status {
+        color: var(--muted);
+        font-size: 14px;
+      }
 
-    .table-wrap {
-      overflow: auto;
-    }
+      .table-wrap {
+        overflow: auto;
+      }
+
+      .news-panel {
+        display: block;
+        padding: 14px;
+        border: 1px solid rgba(151, 183, 198, 0.16);
+        border-radius: 16px;
+        background: rgba(7, 19, 27, 0.8);
+        margin-top: 0;
+        min-height: 360px;
+      }
+
+      .news-host {
+        display: none;
+      }
+
+      .shell.news-mode .news-host {
+        display: block;
+      }
+
+      .shell.news-mode .market-only {
+        display: none !important;
+      }
+
+      .shell.news-mode .market-section {
+        display: none;
+      }
+
+      .news-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+      }
+
+      .news-head,
+      .news-hint,
+      .news-meta {
+        display: none;
+      }
+
+      .news-title {
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .news-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .news-link {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.04);
+        color: #bfefff;
+        text-decoration: none;
+        font-size: 13px;
+      }
+
+      .news-link:hover {
+        border-color: rgba(117, 221, 255, 0.45);
+        color: #e9fbff;
+      }
+
+      .news-hint {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0;
+      }
+
+      .news-meta {
+        color: #8fb4c7;
+        font-size: 12px;
+        margin: 8px 0 10px;
+      }
+
+      .news-text-box {
+        border: 1px solid rgba(151, 183, 198, 0.14);
+        border-radius: 12px;
+        background: #0a1a24;
+        overflow: hidden;
+      }
+
+      .news-item {
+        padding: 12px;
+        border-bottom: 1px solid rgba(151, 183, 198, 0.12);
+      }
+
+      .news-item:last-child {
+        border-bottom: none;
+      }
+
+      .news-item-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+
+      .news-time {
+        font-size: 12px;
+        color: #90b5c8;
+      }
+
+      .news-item-title {
+        margin: 0;
+        font-size: 15px;
+        color: #e7f4fa;
+        font-weight: 700;
+      }
+
+      .news-item-body {
+        margin: 8px 0 0;
+        font-size: 13px;
+        color: #c5d8e2;
+        line-height: 1.6;
+        white-space: pre-wrap;
+      }
+
+      .news-item-links {
+        margin-top: 8px;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .news-item-link {
+        display: inline-flex;
+        align-items: center;
+        padding: 5px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(117, 221, 255, 0.28);
+        color: #bfefff;
+        text-decoration: none;
+        font-size: 12px;
+      }
+
+      .news-item-link:hover {
+        border-color: rgba(117, 221, 255, 0.5);
+        color: #e9fbff;
+      }
+
+      .news-empty {
+        margin: 0;
+        padding: 14px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .news-more-wrap {
+        display: flex;
+        justify-content: center;
+        margin-top: 10px;
+      }
+
+      .news-more-btn {
+        min-width: 130px;
+      }
+
+      .news-more-btn:disabled {
+        opacity: 0.7;
+        cursor: default;
+      }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 980px;
+      min-width: 1320px;
     }
 
       thead th {
@@ -286,6 +604,22 @@
       font-size: 13px;
     }
 
+    .price-main,
+    .supply-main {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: #e4f4fa;
+    }
+
+    .price-sub,
+    .supply-sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
     .source {
       color: #bbd2dd;
       font-size: 13px;
@@ -316,9 +650,9 @@
 
       }
 
-    @media (max-width: 640px) {
-      .shell {
-        width: calc(100vw - 12px);
+      @media (max-width: 640px) {
+        .shell {
+          width: calc(100vw - 12px);
         margin: 6px auto 18px;
         padding: 8px;
         border-radius: 18px;
@@ -336,39 +670,53 @@
           width: 100%;
         }
 
-        .compare-grid {
-          grid-template-columns: 1fr;
-        }
-      }
-  </style>
-</head>
-<body>
-  <main class="shell">
+          .compare-grid {
+            grid-template-columns: 1fr;
+          }
+
+          }
+    </style>
+  </head>
+  <body>
+  <main class="shell" id="appShell">
     <section class="panel hero">
-      <span class="eyebrow" id="eyebrow"></span>
-      <h1 id="title"></h1>
-      <p id="heroDescription"></p>
-      <div class="summary">
-        <article class="stat">
-          <div class="stat-label" id="statLabelBinance"></div>
-          <div class="stat-value" id="statBinance">-</div>
-        </article>
-        <article class="stat">
-          <div class="stat-label" id="statLabelUpbit"></div>
-          <div class="stat-value" id="statUpbit">-</div>
-        </article>
-          <article class="stat">
-            <div class="stat-label" id="statLabelBithumb"></div>
-            <div class="stat-value" id="statBithumb">-</div>
-          </article>
+      <div class="title-row">
+        <div class="title-left">
+          <span class="eyebrow" id="eyebrow"></span>
+          <h1 id="title"></h1>
+          <div class="view-switch">
+            <button class="view-link" id="newsToggleBtn" type="button"></button>
+          </div>
         </div>
-        <div class="auto-strip">
-          <div class="auto-pill"><span class="auto-dot"></span><span id="autoUpdateStatus"></span></div>
-          <div class="auto-pill" id="lastUpdatedStatus"></div>
+      </div>
+      <div class="market-only">
+        <div class="summary">
+          <article class="stat">
+            <div class="stat-label" id="statLabelBinance"></div>
+            <div class="stat-value" id="statBinance">-</div>
+          </article>
+          <article class="stat">
+            <div class="stat-label" id="statLabelUpbit"></div>
+            <div class="stat-value" id="statUpbit">-</div>
+          </article>
+            <article class="stat">
+              <div class="stat-label" id="statLabelBithumb"></div>
+              <div class="stat-value" id="statBithumb">-</div>
+            </article>
+          </div>
+          <div class="auto-strip">
+            <div class="auto-pill"><span class="auto-dot"></span><span id="autoUpdateStatus"></span></div>
+            <div class="auto-pill" id="lastUpdatedStatus"></div>
+            <div class="auto-pill" id="fxRateStatus"></div>
+          </div>
         </div>
       </section>
 
-      <section class="panel controls">
+      <section class="panel controls news-host" id="newsSection">
+        <div class="news-panel" id="newsPanel"></div>
+      </section>
+
+      <section class="panel controls market-section">
         <div class="tabs" id="tabs">
         <button class="tab active" data-board="binance" id="tabBinance"></button>
         <button class="tab" data-board="upbit" id="tabUpbit"></button>
@@ -401,14 +749,16 @@
         </div>
       </section>
 
-      <section class="panel table-wrap">
+      <section class="panel table-wrap market-section">
         <table>
         <thead>
           <tr>
             <th class="rank" id="thRank"></th>
             <th id="thCoin"></th>
             <th id="thSymbol"></th>
+            <th id="thPrice"></th>
             <th id="thCap"></th>
+            <th id="thFdv"></th>
             <th id="thSource"></th>
           </tr>
         </thead>
@@ -417,16 +767,40 @@
       <div class="footer-note" id="footerNote"></div>
     </section>
 
-    <section class="panel controls">
-      <div class="pages" id="pagination"></div>
-    </section>
+      <section class="panel controls market-section">
+        <div class="pages" id="pagination"></div>
+      </section>
+
   </main>
+
+  <div class="lock-ttl-wrap" id="lockTtlWrap">
+    <div class="lock-ttl" id="lockTtl">로그인 유지시간 00시00분</div>
+    <button class="lock-extend-btn" id="lockExtendBtn" type="button">연장</button>
+  </div>
+
+  <div class="site-lock hidden" id="siteLock">
+    <section class="lock-card">
+      <h2 class="lock-title">비밀번호 입력</h2>
+      <p class="lock-desc">설정된 비밀번호를 입력해야 이 페이지를 볼 수 있습니다.</p>
+      <form class="lock-form" id="lockForm">
+        <input id="lockPasswordInput" type="password" autocomplete="off" placeholder="비밀번호" />
+        <button type="submit" id="lockSubmitBtn">확인</button>
+      </form>
+      <div class="lock-error" id="lockError"></div>
+    </section>
+  </div>
 
   <script src="./data.js"></script>
   <script>
+    const SITE_PASSWORD = "zhdlsvks2026";
+    const LOCK_AUTH_UNTIL_KEY = "fdv_lock_until_v1";
+    const LOCK_EXTEND_COUNT_KEY = "fdv_lock_extend_count_v1";
+    const LOCK_TTL_MS = 24 * 60 * 60 * 1000;
+    const LOCK_EXTEND_MAX = 3;
+
     const TEXT = {
       eyebrow: "Exchange Market Cap",
-      title: "\uAC70\uB798\uC18C \uCF54\uC778 \uC2DC\uCD1D \uC21C\uC704",
+        title: "\uAC70\uB798\uC18C \uC2DC\uCD1D \uBE44\uAD50",
       defaultDescription: "\uAC70\uB798\uC18C\uBCC4 \uC0C1\uC7A5 \uCF54\uC778\uACFC \uC2DC\uCD1D \uB370\uC774\uD130\uB97C \uC815\uC801 \uD30C\uC77C\uB85C \uC800\uC7A5\uD574 \uB450\uACE0 \uD45C\uC2DC\uD569\uB2C8\uB2E4.",
       statLabelBinance: "\uBC14\uC774\uB0B8\uC2A4 USDT",
       statLabelUpbit: "\uC5C5\uBE44\uD2B8 KRW",
@@ -440,15 +814,31 @@
         autoUpdateOn: "\uC790\uB3D9 \uAC31\uC2E0 \uCF1C\uC9D0",
         autoUpdateEvery: "{minutes}\uBD84\uB9C8\uB2E4 \uB370\uC774\uD130 \uAC31\uC2E0",
         lastUpdated: "\uB9C8\uC9C0\uB9C9 \uB370\uC774\uD130 \uAC31\uC2E0: {time}",
+        newsOpen: "\uB274\uC2A4",
+        newsTitle: "",
+        newsOpenLink: "\uC0C8 \uCC3D \uC5F4\uAE30",
+        newsHint: "\uB274\uC2A4 \uD56D\uBAA9\uC740 \uC694\uC57D \uAE30\uC900\uC73C\uB85C \uD45C\uC2DC\uB429\uB2C8\uB2E4.",
+        newsHintFallback: "\uB274\uC2A4 API \uC751\uB2F5\uC774 \uC7A0\uC2DC \uC2E4\uD328\uD574 \uC9C1\uC804 \uC218\uC9D1 \uB370\uC774\uD130\uB97C \uD45C\uC2DC \uC911\uC785\uB2C8\uB2E4.",
+        newsHintError: "\uD604\uC7AC \uC218\uC9D1\uD55C \uC18D\uBCF4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uB2E4\uC74C \uAC31\uC2E0\uC744 \uAE30\uB2E4\uB824 \uC8FC\uC138\uC694.",
+        newsMeta: "\uC218\uC9D1 \uC2DC\uAC01: {time} \u00B7 \uCD1D {count}\uAC74",
+        newsEmpty: "\uD45C\uC2DC\uD560 \uC18D\uBCF4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.",
+        newsMore: "\uB354\uBCF4\uAE30 ({remaining}\uAC74 \uB0A8\uC74C)",
+        newsMoreDone: "\uBAA8\uB4E0 \uC18D\uBCF4\uB97C \uD45C\uC2DC\uD588\uC2B5\uB2C8\uB2E4",
+        newsArticleLink: "\uAE30\uC0AC \uBCF4\uAE30",
+        newsOriginLink: "\uC6D0\uBB38 \uBCF4\uAE30",
         placeholder: "\uCF54\uC778\uBA85, \uC2EC\uBCFC, \uD398\uC5B4 \uAC80\uC0C9",
         thRank: "\uC21C\uBC88",
-        thCoin: "\uCF54\uC778",
+      thCoin: "\uCF54\uC778",
       thSymbol: "\uC2EC\uBCFC",
+      thPrice: "\uAC00\uACA9",
       thCap: "\uC2DC\uCD1D",
+      thFdv: "\uC720\uD1B5 \uC815\uBCF4",
       thSource: "\uC2DC\uCD1D \uCD9C\uCC98",
       empty: "\uD45C\uC2DC\uD560 \uCF54\uC778\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
       unknown: "\uBBF8\uD655\uC778",
       noCap: "\uC2DC\uCD1D \uC815\uBCF4 \uC5C6\uC74C",
+      noPrice: "\uAC00\uACA9 \uC815\uBCF4 \uC5C6\uC74C",
+      noSupply: "\uC720\uD1B5 \uC815\uBCF4 \uC5C6\uC74C",
       footer:
         "\uB370\uC774\uD130 \uC0DD\uC131 \uC2DC\uAC01: {time} | \uBC14\uC774\uB0B8\uC2A4\uB294 \uBC14\uC774\uB0B8\uC2A4 \uAC00\uACA9 \uD398\uC774\uC9C0 \uC2E4\uC81C \uC2DC\uCD1D\uC744 \uC0AC\uC6A9\uD569\uB2C8\uB2E4. \uC5C5\uBE44\uD2B8\uB294 \uC815\uBCF4 \uD0ED \uC2DC\uCD1D \uAC12 \uC911 CMC\uB97C \uC6B0\uC120 \uC0AC\uC6A9\uD569\uB2C8\uB2E4. \uBE57\uC378\uC740 \uBA54\uC778 \uC624\uB298\uC758 \uC2DC\uC138 \uC601\uC5ED\uC5D0\uC11C \uC4F0\uB294 \uC2DC\uCD1D(CoinMarketCap \uC81C\uACF5)\uC744 \uC0AC\uC6A9\uD569\uB2C8\uB2E4.",
       binanceNote: "\uBC14\uC774\uB0B8\uC2A4 \uAC00\uACA9 \uD398\uC774\uC9C0\uC758 \uC2E4\uC81C \uC2DC\uCD1D",
@@ -457,35 +847,164 @@
     };
 
       const PAGE_SIZE = 100;
-      const AUTO_REFRESH_MS = 60 * 60 * 1000;
       const state = {
         board: "binance",
         page: 1,
         query: "",
         sortDirection: "desc",
         compareBoard: "",
+        viewMode: "market",
       };
 
-    const data = window.BOARD_DATA || { boards: { binance: [], upbit: [], bithumb: [] }, stats: {}, notes: {} };
+    const appShell = document.getElementById("appShell");
+    const data = window.BOARD_DATA || {
+      boards: { binance: [], upbit: [], bithumb: [] },
+      stats: {},
+      notes: {},
+      news: { items: [] },
+    };
     const tabs = document.getElementById("tabs");
     const searchInput = document.getElementById("searchInput");
     const tableBody = document.getElementById("tableBody");
     const pagination = document.getElementById("pagination");
     const statusText = document.getElementById("statusText");
       const footerNote = document.getElementById("footerNote");
-      const heroDescription = document.getElementById("heroDescription");
       const statBinance = document.getElementById("statBinance");
       const statUpbit = document.getElementById("statUpbit");
       const statBithumb = document.getElementById("statBithumb");
       const autoUpdateStatus = document.getElementById("autoUpdateStatus");
       const lastUpdatedStatus = document.getElementById("lastUpdatedStatus");
+      const fxRateStatus = document.getElementById("fxRateStatus");
+      const thPrice = document.getElementById("thPrice");
       const thCap = document.getElementById("thCap");
+      const thFdv = document.getElementById("thFdv");
       const baseBoardSelect = document.getElementById("baseBoardSelect");
       const compareBoardSelect = document.getElementById("compareBoardSelect");
+      const titleHeading = document.getElementById("title");
+      const newsToggleBtn = document.getElementById("newsToggleBtn");
+      const siteLock = document.getElementById("siteLock");
+      const lockTtl = document.getElementById("lockTtl");
+      const lockExtendBtn = document.getElementById("lockExtendBtn");
+      const lockForm = document.getElementById("lockForm");
+      const lockPasswordInput = document.getElementById("lockPasswordInput");
+      const lockError = document.getElementById("lockError");
+
+      function showSiteLock() {
+        document.body.classList.add("locked");
+        siteLock.classList.remove("hidden");
+        lockPasswordInput.value = "";
+        lockError.textContent = "";
+        window.setTimeout(() => lockPasswordInput.focus(), 0);
+      }
+
+      function hideSiteLock() {
+        document.body.classList.remove("locked");
+        siteLock.classList.add("hidden");
+      }
+
+      function getLockAuthUntil() {
+        const raw = Number(localStorage.getItem(LOCK_AUTH_UNTIL_KEY));
+        return Number.isFinite(raw) ? raw : 0;
+      }
+
+      function getLockExtendCount() {
+        const raw = Number(localStorage.getItem(LOCK_EXTEND_COUNT_KEY));
+        if (!Number.isFinite(raw) || raw < 0) return 0;
+        return Math.floor(raw);
+      }
+
+      function setLockExtendCount(count) {
+        localStorage.setItem(LOCK_EXTEND_COUNT_KEY, String(Math.max(0, Math.floor(count))));
+      }
+
+      function setLockAuthFor24Hours() {
+        const until = Date.now() + LOCK_TTL_MS;
+        localStorage.setItem(LOCK_AUTH_UNTIL_KEY, String(until));
+      }
+
+      function renderLockExtendButton() {
+        const until = getLockAuthUntil();
+        const active = until > Date.now();
+        const used = getLockExtendCount();
+        const remain = Math.max(0, LOCK_EXTEND_MAX - used);
+
+        if (!active) {
+          lockExtendBtn.disabled = true;
+          lockExtendBtn.textContent = "연장";
+          return;
+        }
+
+        if (remain <= 0) {
+          lockExtendBtn.disabled = true;
+          lockExtendBtn.textContent = "연장 0회 남음";
+          return;
+        }
+
+        lockExtendBtn.disabled = false;
+        lockExtendBtn.textContent = `연장 ${remain}회 남음`;
+      }
+
+      function formatRemainingLockTime(ms) {
+        const remain = Math.max(0, Number(ms) || 0);
+        const totalMinutes = Math.max(0, Math.ceil(remain / (60 * 1000)));
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        return `${String(hours).padStart(2, "0")}시${String(minutes).padStart(2, "0")}분`;
+      }
+
+      function renderLockTtl() {
+        const until = getLockAuthUntil();
+        const remain = Math.max(0, until - Date.now());
+        lockTtl.textContent = `로그인 유지시간 ${formatRemainingLockTime(remain)}`;
+        renderLockExtendButton();
+      }
+
+      function checkSiteLock() {
+        const until = getLockAuthUntil();
+        if (until > Date.now()) {
+          hideSiteLock();
+          renderLockTtl();
+          return;
+        }
+        localStorage.removeItem(LOCK_AUTH_UNTIL_KEY);
+        localStorage.removeItem(LOCK_EXTEND_COUNT_KEY);
+        renderLockTtl();
+        showSiteLock();
+      }
+
+      lockForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const value = String(lockPasswordInput.value || "");
+        if (value === SITE_PASSWORD) {
+          setLockExtendCount(0);
+          setLockAuthFor24Hours();
+          hideSiteLock();
+          renderLockTtl();
+          return;
+        }
+        lockError.textContent = "비밀번호가 맞지 않습니다.";
+        lockPasswordInput.value = "";
+        lockPasswordInput.focus();
+      });
+
+      lockExtendBtn.addEventListener("click", () => {
+        const until = getLockAuthUntil();
+        if (until <= Date.now()) {
+          checkSiteLock();
+          return;
+        }
+        const used = getLockExtendCount();
+        if (used >= LOCK_EXTEND_MAX) {
+          renderLockTtl();
+          return;
+        }
+        setLockExtendCount(used + 1);
+        setLockAuthFor24Hours();
+        renderLockTtl();
+      });
 
       document.getElementById("eyebrow").textContent = TEXT.eyebrow;
       document.getElementById("title").textContent = TEXT.title;
-    heroDescription.textContent = TEXT.defaultDescription;
     document.getElementById("statLabelBinance").textContent = TEXT.statLabelBinance;
     document.getElementById("statLabelUpbit").textContent = TEXT.statLabelUpbit;
     document.getElementById("statLabelBithumb").textContent = TEXT.statLabelBithumb;
@@ -495,6 +1014,7 @@
       document.getElementById("compareBaseLabel").textContent = TEXT.compareBaseLabel;
       document.getElementById("compareTargetLabel").textContent = TEXT.compareTargetLabel;
       document.getElementById("compareNoneOption").textContent = TEXT.compareNone;
+      newsToggleBtn.textContent = TEXT.newsOpen;
       baseBoardSelect.options[0].textContent = TEXT.tabBinance;
       baseBoardSelect.options[1].textContent = TEXT.tabUpbit;
       baseBoardSelect.options[2].textContent = TEXT.tabBithumb;
@@ -506,7 +1026,9 @@
       searchInput.placeholder = TEXT.placeholder;
       document.getElementById("thRank").textContent = TEXT.thRank;
       document.getElementById("thCoin").textContent = TEXT.thCoin;
-    document.getElementById("thSymbol").textContent = TEXT.thSymbol;
+      document.getElementById("thSymbol").textContent = TEXT.thSymbol;
+      thPrice.textContent = TEXT.thPrice;
+      thFdv.textContent = TEXT.thFdv;
       function renderCapHeader() {
         thCap.classList.add("sortable-th");
         thCap.innerHTML = `<span class="sort-label">${TEXT.thCap}<span class="sort-arrow">${
@@ -514,8 +1036,8 @@
         }</span></span>`;
         thCap.title =
           state.sortDirection === "asc"
-            ? "클릭하면 시총 높은순으로 정렬"
-            : "클릭하면 시총 낮은순으로 정렬";
+            ? "?대┃?섎㈃ ?쒖킑 ?믪??쒖쑝濡??뺣젹"
+            : "?대┃?섎㈃ ?쒖킑 ????쒖쑝濡??뺣젹";
       }
 
       renderCapHeader();
@@ -562,12 +1084,91 @@
       };
     }
 
+    function formatUsdPrice(value) {
+      if (!Number.isFinite(value)) return TEXT.unknown;
+      let digits = 2;
+      if (value < 1) digits = 4;
+      if (value < 0.01) digits = 8;
+      return `$${formatNumber(value, digits)}`;
+    }
+
+    function formatKrwPrice(value) {
+      if (!Number.isFinite(value)) return TEXT.unknown;
+      const digits = value < 1 ? 4 : value < 1000 ? 2 : 0;
+      return `${formatNumber(value, digits)}원`;
+    }
+
+    function priceDisplay(row) {
+      if (row.nativeCurrency === "KRW") {
+        return {
+          main: formatKrwPrice(Number(row.priceKrw)),
+          sub: formatUsdPrice(Number(row.priceUsd)),
+        };
+      }
+      return {
+        main: formatUsdPrice(Number(row.priceUsd)),
+        sub: formatKrwPrice(Number(row.priceKrw)),
+      };
+    }
+
+    function formatTokenAmount(value) {
+      if (!Number.isFinite(value)) return "-";
+      const amount = Math.floor(Math.max(0, value));
+      const jo = Math.floor(amount / 1_0000_0000_0000);
+      const eok = Math.floor((amount % 1_0000_0000_0000) / 1_0000_0000);
+      const man = Math.floor((amount % 1_0000_0000) / 1_0000);
+
+      if (jo > 0) {
+        if (eok > 0) return `${formatNumber(jo, 0)}조 ${formatNumber(eok, 0)}억개`;
+        return `${formatNumber(jo, 0)}조개`;
+      }
+      if (eok > 0) {
+        if (man > 0) {
+          const manText = man % 1000 === 0 ? `${formatNumber(man / 1000, 0)}천` : formatNumber(man, 0);
+          return `${formatNumber(eok, 0)}억 ${manText}만개`;
+        }
+        return `${formatNumber(eok, 0)}억개`;
+      }
+      if (man > 0) {
+        const manText = man % 1000 === 0 ? `${formatNumber(man / 1000, 0)}천` : formatNumber(man, 0);
+        return `${manText}만개`;
+      }
+      return `${formatNumber(amount, 0)}개`;
+    }
+
+    function supplyDisplay(row) {
+      const fdvUsd = Number(row.fdvUsd);
+      const fdvKrw = Number(row.fdvKrw);
+      const circulating = Number(row.circulatingSupply);
+      const total = Number(row.totalSupply);
+      const ratio = Number(row.circulatingRatio);
+
+      let fdvText = TEXT.unknown;
+      if (Number.isFinite(fdvKrw)) {
+        fdvText = formatKrwShort(fdvKrw);
+      } else if (Number.isFinite(fdvUsd)) {
+        const fdvKrwFallback = fdvUsd * Number(data.fxUsdKrw || 0);
+        fdvText = Number.isFinite(fdvKrwFallback) ? formatKrwShort(fdvKrwFallback) : TEXT.unknown;
+      }
+
+      const circulatingText = formatTokenAmount(circulating);
+      const totalText = formatTokenAmount(total);
+      const ratioText = Number.isFinite(ratio) ? `${formatNumber(ratio * 100, 2)}%` : "-";
+
+      return {
+        main: `총발행 기준 시총 ${fdvText}`,
+        sub: `유통량 ${circulatingText} · 총발행량 ${totalText} · 유통비율 ${ratioText}`,
+      };
+    }
+
     function sourceLabel(code) {
       const map = {
         binance_exact: "\uBC14\uC774\uB0B8\uC2A4 \uC2E4\uC81C \uC2DC\uCD1D",
         upbit_cmc: "\uC5C5\uBE44\uD2B8 CMC",
         upbit_coingecko: "\uC5C5\uBE44\uD2B8 CoinGecko",
         upbit_project: "\uC5C5\uBE44\uD2B8 \uD504\uB85C\uC81D\uD2B8\uD300",
+        upbit_fill_from_binance_live: "\uC5C5\uBE44\uD2B8 \uAE30\uC900\uC77C \uC624\uB798\uB428, \uBC14\uC774\uB0B8\uC2A4 \uC2E4\uC2DC\uAC04 \uBCF4\uC815",
+        upbit_fill_from_bithumb_live: "\uC5C5\uBE44\uD2B8 \uAE30\uC900\uC77C \uC624\uB798\uB428, \uBE57\uC378 \uC2E4\uC2DC\uAC04 \uBCF4\uC815",
         upbit_fill_from_bithumb: "\uC5C5\uBE44\uD2B8 \uBBF8\uC81C\uACF5, \uBE57\uC378 \uBCF4\uC815",
         upbit_missing: "\uC5C5\uBE44\uD2B8 \uBBF8\uC81C\uACF5",
         upbit_fetch_failed: "\uC5C5\uBE44\uD2B8 \uC870\uD68C \uC2E4\uD328",
@@ -578,6 +1179,17 @@
     }
 
     function sourceDetailLabel(code) {
+      if (String(code || "").startsWith("stale_upbit_base_date:")) {
+        const payload = String(code || "").replace("stale_upbit_base_date:", "");
+        const [baseDateRaw, refSourceRaw] = payload.split("|");
+        const baseDate = baseDateRaw || "-";
+        const refMap = {
+          binance_symbol_list: "바이낸스 참조",
+          bithumb_main_today_price: "빗썸 참조",
+        };
+        const refText = refMap[refSourceRaw] || "타 거래소 참조";
+        return `업비트 기준일 오래됨 (${baseDate}) · ${refText}`;
+      }
       const map = {
         binance_symbol_list: "Binance symbol list",
         zeta_same_symbol_fill: "ZETA same-symbol fill",
@@ -609,10 +1221,45 @@
         return new Date(timestampSeconds * 1000).toLocaleString("ko-KR");
       }
 
+      function fxSourceLabel(code) {
+        const map = {
+          upbit_krw_usdt: "업비트 KRW-USDT",
+          bithumb_usdt_krw: "빗썸 USDT/KRW",
+          previous_payload: "이전값 유지",
+          fallback_default: "기본값",
+        };
+        return map[String(code || "")] || String(code || "-");
+      }
+
       function renderAutoStatus() {
         const minutes = Number(data.autoRefreshMinutes) || 60;
         autoUpdateStatus.textContent = `${TEXT.autoUpdateOn} · ${TEXT.autoUpdateEvery.replace("{minutes}", String(minutes))}`;
         lastUpdatedStatus.textContent = TEXT.lastUpdated.replace("{time}", formatDateTime(data.generatedAt));
+        const fxRate = Number(data.fxUsdKrw);
+        const fxRateText = Number.isFinite(fxRate) ? `${formatNumber(fxRate, 2)}원` : "-";
+        const fxSourceText = fxSourceLabel(data.fxSource);
+        fxRateStatus.textContent = `USDT 환율 ${fxRateText} (${fxSourceText})`;
+      }
+
+      function setViewMode(mode) {
+        state.viewMode = mode === "news" ? "news" : "market";
+        const isNewsMode = state.viewMode === "news";
+        appShell.classList.toggle("news-mode", isNewsMode);
+        newsToggleBtn.classList.toggle("active", isNewsMode);
+      }
+
+      function goHomeView() {
+        setViewMode("market");
+        state.board = "binance";
+        state.page = 1;
+        state.query = "";
+        state.compareBoard = "";
+        state.sortDirection = "desc";
+        searchInput.value = "";
+        baseBoardSelect.value = "binance";
+        compareBoardSelect.value = "";
+        renderCapHeader();
+        render();
       }
 
       function getCompareSymbolSet(board) {
@@ -673,14 +1320,16 @@
 
     function renderTable(rows) {
       if (!rows.length) {
-        tableBody.innerHTML = `<tr><td class="empty" colspan="5">${TEXT.empty}</td></tr>`;
+        tableBody.innerHTML = `<tr><td class="empty" colspan="7">${TEXT.empty}</td></tr>`;
         return;
       }
 
       tableBody.innerHTML = rows
         .map((row, index) => {
           const rank = (state.page - 1) * PAGE_SIZE + index + 1;
+          const price = priceDisplay(row);
           const cap = capDisplay(row);
+          const supply = supplyDisplay(row);
           const sourceDetailText = sourceDetailLabel(row.capSourceDetail);
           const sourceDetail = sourceDetailText ? `<div class="muted">${sourceDetailText}</div>` : "";
           return `
@@ -692,8 +1341,16 @@
               </td>
               <td><span class="chip">${row.symbol}</span></td>
               <td>
+                <div class="price-main">${price.main || TEXT.unknown}</div>
+                <div class="price-sub">${price.sub || TEXT.noPrice}</div>
+              </td>
+              <td>
                 <div class="cap-main">${cap.main || TEXT.unknown}</div>
                 <div class="cap-sub">${cap.sub || TEXT.noCap}</div>
+              </td>
+              <td>
+                <div class="supply-main">${supply.main || TEXT.unknown}</div>
+                <div class="supply-sub">${supply.sub || TEXT.noSupply}</div>
               </td>
               <td class="source">
                 <div>${sourceLabel(row.capSource)}</div>
@@ -723,58 +1380,87 @@
         compareBoardSelect.value = state.compareBoard;
 
         const withCapCount = rows.filter((row) => Number.isFinite(row.sortCapUsd)).length;
+        const withPriceCount = rows.filter((row) => Number.isFinite(Number(row.priceUsd)) || Number.isFinite(Number(row.priceKrw))).length;
+        const withSupplyCount = rows.filter((row) =>
+          Number.isFinite(Number(row.circulatingSupply)) ||
+          Number.isFinite(Number(row.totalSupply))
+        ).length;
+        const boardNoteText = noteLabel(data.notes[state.board]);
         statusText.textContent = state.compareBoard
-          ? `\uACF5\uD1B5 \uC0C1\uC7A5 ${formatNumber(rows.length, 0)}\uAC1C | \uAE30\uC900 ${boardLabel(state.board)} | \uBE44\uAD50 ${boardLabel(state.compareBoard)} | \uC2DC\uCD1D \uD655\uC778 ${formatNumber(withCapCount, 0)}\uAC1C | ${state.page} / ${totalPages} \uD398\uC774\uC9C0`
-          : `\uCD1D ${formatNumber(rows.length, 0)}\uAC1C | \uC2DC\uCD1D \uD655\uC778 ${formatNumber(withCapCount, 0)}\uAC1C | ${state.page} / ${totalPages} \uD398\uC774\uC9C0`;
+          ? `\uACF5\uD1B5 \uC0C1\uC7A5 ${formatNumber(rows.length, 0)}\uAC1C | \uAE30\uC900 ${boardLabel(state.board)} | \uBE44\uAD50 ${boardLabel(state.compareBoard)} | \uC2DC\uCD1D \uD655\uC778 ${formatNumber(withCapCount, 0)}\uAC1C | \uAC00\uACA9 \uD655\uC778 ${formatNumber(withPriceCount, 0)}\uAC1C | \uC720\uD1B5 \uC815\uBCF4 \uD655\uC778 ${formatNumber(withSupplyCount, 0)}\uAC1C | ${state.page} / ${totalPages} \uD398\uC774\uC9C0 | ${boardNoteText}`
+          : `\uCD1D ${formatNumber(rows.length, 0)}\uAC1C | \uC2DC\uCD1D \uD655\uC778 ${formatNumber(withCapCount, 0)}\uAC1C | \uAC00\uACA9 \uD655\uC778 ${formatNumber(withPriceCount, 0)}\uAC1C | \uC720\uD1B5 \uC815\uBCF4 \uD655\uC778 ${formatNumber(withSupplyCount, 0)}\uAC1C | ${state.page} / ${totalPages} \uD398\uC774\uC9C0 | ${boardNoteText}`;
 
         const generatedAt = data.generatedAt
           ? new Date(data.generatedAt * 1000).toLocaleString("ko-KR")
           : "-";
-        heroDescription.textContent = state.compareBoard
-          ? `${boardLabel(state.board)}\uC5D0 \uC0C1\uC7A5\uB41C \uCF54\uC778 \uC911 ${boardLabel(state.compareBoard)}\uC5D0\uB3C4 \uC0C1\uC7A5\uB41C \uCF54\uC778\uB9CC \uD45C\uC2DC\uD569\uB2C8\uB2E4.`
-          : noteLabel(data.notes[state.board]);
         footerNote.textContent = TEXT.footer.replace("{time}", generatedAt);
       }
 
       tabs.addEventListener("click", (event) => {
         const button = event.target.closest("[data-board]");
         if (!button) return;
+        setViewMode("market");
         state.board = button.dataset.board;
         state.page = 1;
         render();
       });
 
       baseBoardSelect.addEventListener("change", (event) => {
+        setViewMode("market");
         state.board = event.target.value || "binance";
         state.page = 1;
         render();
       });
 
       compareBoardSelect.addEventListener("change", (event) => {
+        setViewMode("market");
         state.compareBoard = event.target.value || "";
         state.page = 1;
         render();
       });
 
       searchInput.addEventListener("input", (event) => {
+        setViewMode("market");
         state.query = event.target.value || "";
         state.page = 1;
         render();
       });
 
       thCap.addEventListener("click", () => {
+        setViewMode("market");
         state.sortDirection = state.sortDirection === "desc" ? "asc" : "desc";
         state.page = 1;
         renderCapHeader();
         render();
       });
 
+      newsToggleBtn.addEventListener("click", () => {
+        setViewMode("news");
+      });
+
+      titleHeading.addEventListener("click", () => {
+        goHomeView();
+      });
+
       statBinance.textContent = `${formatNumber(data.stats.binance?.total || 0, 0)} / ${formatNumber(data.stats.binance?.withCap || 0, 0)}`;
       statUpbit.textContent = `${formatNumber(data.stats.upbit?.total || 0, 0)} / ${formatNumber(data.stats.upbit?.withCap || 0, 0)}`;
       statBithumb.textContent = `${formatNumber(data.stats.bithumb?.total || 0, 0)} / ${formatNumber(data.stats.bithumb?.withCap || 0, 0)}`;
       renderAutoStatus();
-      window.setTimeout(() => window.location.reload(), AUTO_REFRESH_MS);
+      renderLockTtl();
+      setViewMode("market");
+      checkSiteLock();
+      window.setInterval(() => {
+        renderLockTtl();
+        const until = getLockAuthUntil();
+        if (until <= Date.now() && !document.body.classList.contains("locked")) {
+          checkSiteLock();
+        }
+      }, 1000);
+      const autoRefreshMinutes = Math.max(1, Number(data.autoRefreshMinutes) || 60);
+      const autoRefreshMs = autoRefreshMinutes * 60 * 1000;
+      window.setTimeout(() => window.location.reload(), autoRefreshMs);
       render();
     </script>
   </body>
   </html>
+
