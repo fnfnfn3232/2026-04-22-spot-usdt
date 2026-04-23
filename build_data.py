@@ -69,6 +69,28 @@ def load_previous_payload() -> dict | None:
     return None
 
 
+def clone_previous_board_rows(previous_payload: dict | None, board_name: str) -> list[dict]:
+    boards = (previous_payload or {}).get("boards")
+    if not isinstance(boards, dict):
+        return []
+    rows = boards.get(board_name)
+    if not isinstance(rows, list):
+        return []
+    try:
+        # JSON round-trip to safely deep-copy nested structures.
+        return json.loads(json.dumps(rows, ensure_ascii=False))
+    except (TypeError, ValueError):
+        return []
+
+
+def normalize_previous_board_rows(rows: list[dict], *, board_name: str, error_text: str) -> list[dict]:
+    for row in rows:
+        row["fallbackUsed"] = True
+        row["fallbackSource"] = f"previous_payload:{board_name}"
+        row["fallbackError"] = error_text
+    return rows
+
+
 def fetch_json(url: str, *, retries: int = 3, pause: float = 1.0) -> dict | list:
     last_error = None
     for attempt in range(retries):
@@ -1200,9 +1222,49 @@ def build_changes(boards: dict[str, list[dict]], previous_payload: dict | None) 
 
 def make_payload(previous_payload: dict | None = None) -> dict:
     refresh_fx_usd_krw(previous_payload)
-    binance_rows, _binance_lookup = fetch_binance()
-    upbit_rows, _upbit_lookup = fetch_upbit()
-    bithumb_rows = fetch_bithumb()
+    refresh_issues: dict[str, str] = {}
+
+    try:
+        binance_rows, _binance_lookup = fetch_binance()
+    except Exception as error:  # noqa: BLE001
+        cached_rows = clone_previous_board_rows(previous_payload, "binance")
+        if not cached_rows:
+            raise
+        binance_rows = normalize_previous_board_rows(
+            cached_rows,
+            board_name="binance",
+            error_text=str(error),
+        )
+        _binance_lookup = build_rows_by_symbol(binance_rows)
+        refresh_issues["binance"] = f"fallback_previous_payload:{error}"
+
+    try:
+        upbit_rows, _upbit_lookup = fetch_upbit()
+    except Exception as error:  # noqa: BLE001
+        cached_rows = clone_previous_board_rows(previous_payload, "upbit")
+        if not cached_rows:
+            raise
+        upbit_rows = normalize_previous_board_rows(
+            cached_rows,
+            board_name="upbit",
+            error_text=str(error),
+        )
+        _upbit_lookup = build_rows_by_symbol(upbit_rows)
+        refresh_issues["upbit"] = f"fallback_previous_payload:{error}"
+
+    try:
+        bithumb_rows = fetch_bithumb()
+    except Exception as error:  # noqa: BLE001
+        cached_rows = clone_previous_board_rows(previous_payload, "bithumb")
+        if not cached_rows:
+            raise
+        bithumb_rows = normalize_previous_board_rows(
+            cached_rows,
+            board_name="bithumb",
+            error_text=str(error),
+        )
+        refresh_issues["bithumb"] = f"fallback_previous_payload:{error}"
+
     news_payload = fetch_coinness_news((previous_payload or {}).get("news"))
     apply_upbit_live_fills(upbit_rows, binance_rows, bithumb_rows)
     apply_upbit_targeted_fills(upbit_rows, bithumb_rows)
@@ -1235,6 +1297,7 @@ def make_payload(previous_payload: dict | None = None) -> dict:
             "upbit": "upbit_info_tab_cmc_first",
             "bithumb": "bithumb_main_coinmarketcap_feed",
         },
+        "refreshIssues": refresh_issues,
     }
 
 
