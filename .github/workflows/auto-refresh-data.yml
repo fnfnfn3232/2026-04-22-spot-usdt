@@ -20,23 +20,42 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Rebuild data
-        run: python build_data.py
-
       - name: Commit updated data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data.js board_snapshot.json
-          if git diff --cached --quiet; then
-            echo "No data changes"
-            exit 0
-          fi
-          git commit -m "chore: auto refresh data"
-          git push
+          for attempt in 1 2 3; do
+            echo "Attempt $attempt: sync with origin/main"
+            git fetch origin main
+            git checkout -B main origin/main
+
+            echo "Attempt $attempt: rebuild data"
+            python build_data.py
+
+            git add data.js board_snapshot.json
+            if git diff --cached --quiet; then
+              echo "No data changes"
+              exit 0
+            fi
+
+            git commit -m "chore: auto refresh data"
+            if git push origin HEAD:main; then
+              echo "Push success on attempt $attempt"
+              exit 0
+            fi
+
+            echo "Push rejected, retrying..."
+            git reset --hard origin/main
+            sleep 2
+          done
+
+          echo "Failed to push after 3 attempts"
+          exit 1
