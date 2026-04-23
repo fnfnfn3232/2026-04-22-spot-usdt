@@ -2,7 +2,8 @@ name: Auto Refresh Data
 
 on:
   schedule:
-    - cron: "0,30 * * * *"
+    # Top-of-hour congestion can skip runs; offset for better schedule reliability.
+    - cron: "7,37 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -38,7 +39,19 @@ jobs:
             git checkout -B main origin/main
 
             echo "Attempt $attempt: rebuild data"
-            python build_data.py
+            ok=0
+            for build_attempt in 1 2 3; do
+              if python build_data.py; then
+                ok=1
+                break
+              fi
+              echo "Build failed (attempt $build_attempt), retrying..."
+              sleep 4
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "Build failed after retries"
+              exit 1
+            fi
 
             git add data.js board_snapshot.json
             if git diff --cached --quiet; then
