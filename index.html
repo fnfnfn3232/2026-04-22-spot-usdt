@@ -604,12 +604,19 @@
       font-size: 13px;
     }
 
-    .price-main,
-    .supply-main {
+    .price-main {
       font-size: 17px;
       font-weight: 700;
       letter-spacing: -0.01em;
       color: #e4f4fa;
+    }
+
+    .supply-main {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.015em;
+      color: #e4f4fa;
+      line-height: 1.55;
     }
 
     .price-sub,
@@ -1156,8 +1163,8 @@
       const ratioText = Number.isFinite(ratio) ? `${formatNumber(ratio * 100, 2)}%` : "-";
 
       return {
-        main: `총발행 기준 시총 ${fdvText}`,
-        sub: `유통량 ${circulatingText} · 총발행량 ${totalText} · 유통비율 ${ratioText}`,
+        main: `유통량 ${circulatingText} · 총발행량 ${totalText} · 유통비율 ${ratioText}`,
+        sub: `총발행 기준 시총 ${fdvText}`,
       };
     }
 

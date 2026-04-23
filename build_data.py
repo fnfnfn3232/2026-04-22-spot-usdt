@@ -32,6 +32,9 @@ UPBIT_PREFER_BITHUMB_FILL_SYMBOL_MAP = {
     "ORDER": "ORDER",
     "ORDI": "ORDI",
 }
+BITHUMB_SUPPLY_PREFER_UPBIT_SYMBOL_MAP = {
+    "ORDER": "ORDER",
+}
 
 
 def normalize_text(value: str | None) -> str:
@@ -975,6 +978,79 @@ def pick_first_candidate_with_cap(candidate_rows: list[dict]) -> dict | None:
     return None
 
 
+def pick_first_candidate_with_supply(candidate_rows: list[dict]) -> dict | None:
+    for candidate in candidate_rows:
+        if to_float(candidate.get("circulatingSupply")) is not None or to_float(candidate.get("totalSupply")) is not None:
+            return candidate
+    return None
+
+
+def pick_supply_fill_candidate(target_row: dict, candidate_rows: list[dict]) -> dict | None:
+    for candidate in candidate_rows:
+        circulating_supply = to_float(candidate.get("circulatingSupply"))
+        total_supply = to_float(candidate.get("totalSupply"))
+        if circulating_supply is None and total_supply is None:
+            continue
+        if not has_name_key_overlap(target_row, candidate):
+            continue
+        return candidate
+    return None
+
+
+def apply_bithumb_supply_fills(
+    bithumb_rows: list[dict], upbit_rows: list[dict], binance_rows: list[dict]
+) -> None:
+    upbit_by_symbol = build_rows_by_symbol(upbit_rows)
+    binance_by_symbol = build_rows_by_symbol(binance_rows)
+
+    for bithumb_row in bithumb_rows:
+        if to_float(bithumb_row.get("circulatingSupply")) is not None or to_float(
+            bithumb_row.get("totalSupply")
+        ) is not None:
+            continue
+
+        symbol = str(bithumb_row.get("symbol") or "").upper()
+        if not symbol:
+            continue
+
+        preferred_upbit_symbol = BITHUMB_SUPPLY_PREFER_UPBIT_SYMBOL_MAP.get(symbol)
+        if preferred_upbit_symbol:
+            candidate = pick_first_candidate_with_supply(upbit_by_symbol.get(preferred_upbit_symbol, []))
+            source_detail = f"upbit_info_tab_cmc_first|preferred:{preferred_upbit_symbol}"
+        else:
+            candidate = None
+            source_detail = ""
+
+        if candidate is None:
+            candidate = pick_supply_fill_candidate(bithumb_row, upbit_by_symbol.get(symbol, []))
+            source_detail = "upbit_info_tab_cmc_first"
+        if candidate is None:
+            candidate = pick_supply_fill_candidate(bithumb_row, binance_by_symbol.get(symbol, []))
+            source_detail = "binance_symbol_list"
+
+        if candidate is None:
+            continue
+
+        circulating_supply = to_float(candidate.get("circulatingSupply"))
+        total_supply = to_float(candidate.get("totalSupply"))
+        price_usd = to_float(bithumb_row.get("priceUsd")) or to_float(candidate.get("priceUsd"))
+        market_cap_usd = to_float(bithumb_row.get("marketCapUsd")) or to_float(candidate.get("marketCapUsd"))
+        fdv_usd = compute_fdv_usd(
+            fdv_usd=to_float(candidate.get("fdvUsd")),
+            price_usd=price_usd,
+            total_supply=total_supply,
+            market_cap_usd=market_cap_usd,
+            circulating_supply=circulating_supply,
+        )
+
+        bithumb_row["circulatingSupply"] = circulating_supply
+        bithumb_row["totalSupply"] = total_supply
+        bithumb_row["circulatingRatio"] = compute_circulating_ratio(circulating_supply, total_supply)
+        bithumb_row["fdvUsd"] = fdv_usd
+        bithumb_row["fdvKrw"] = fdv_usd * FX_USD_KRW if fdv_usd is not None else None
+        bithumb_row["supplyDetail"] = f"bithumb_supply_fill:{source_detail}"
+
+
 def apply_upbit_live_fills(
     upbit_rows: list[dict], binance_rows: list[dict], bithumb_rows: list[dict]
 ) -> None:
@@ -1130,6 +1206,7 @@ def make_payload(previous_payload: dict | None = None) -> dict:
     news_payload = fetch_coinness_news((previous_payload or {}).get("news"))
     apply_upbit_live_fills(upbit_rows, binance_rows, bithumb_rows)
     apply_upbit_targeted_fills(upbit_rows, bithumb_rows)
+    apply_bithumb_supply_fills(bithumb_rows, upbit_rows, binance_rows)
 
     boards = {
         "binance": finalize_rows(binance_rows),
