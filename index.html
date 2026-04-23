@@ -825,6 +825,7 @@
     const LOCK_TTL_MS = 24 * 60 * 60 * 1000;
     const LOCK_EXTEND_MAX = 3;
     const MANUAL_REFRESH_COOLDOWN_MS = 30 * 1000;
+    const REMOTE_DATA_URL = "https://fnfnfn3232.github.io/2026-04-22-spot-usdt/data.js";
 
     const TEXT = {
       eyebrow: "Exchange Market Cap",
@@ -848,6 +849,7 @@
         manualRefreshUnchanged: "\uC218\uB3D9 \uAC31\uC2E0 \uC644\uB8CC: \uCD5C\uC2E0 \uD30C\uC77C \uBCC0\uB3D9 \uC5C6\uC74C ({time})",
         manualRefreshFailed: "\uC218\uB3D9 \uAC31\uC2E0 \uC2E4\uD328 (\uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4)",
         manualRefreshWait: "\uC548\uC815\uC131 \uBCF4\uD638\ub85C {remain} \uD6C4 \uAC00\uB2A5",
+        fileModeSource: "\uB85C\uCEEC \uD30C\uC77C \uBAA8\uB4DC(\uC6D0\uACA9 data.js \uC6B0\uC120 \uC870\uD68C)",
         lastUpdated: "\uB9C8\uC9C0\uB9C9 \uB370\uC774\uD130 \uAC31\uC2E0: {time}",
         newsOpen: "\uB274\uC2A4",
         newsTitle: "",
@@ -1270,7 +1272,8 @@
 
       function renderAutoStatus() {
         const minutes = Number(data.autoRefreshMinutes) || 60;
-        autoUpdateStatus.textContent = `${TEXT.autoUpdateOn} · ${TEXT.autoUpdateEvery.replace("{minutes}", String(minutes))}`;
+        const suffix = location.protocol === "file:" ? ` · ${TEXT.fileModeSource}` : "";
+        autoUpdateStatus.textContent = `${TEXT.autoUpdateOn} · ${TEXT.autoUpdateEvery.replace("{minutes}", String(minutes))}${suffix}`;
         lastUpdatedStatus.textContent = TEXT.lastUpdated.replace("{time}", formatDateTime(data.generatedAt));
         const fxRate = Number(data.fxUsdKrw);
         const fxRateText = Number.isFinite(fxRate) ? `${formatNumber(fxRate, 2)}원` : "-";
@@ -1293,6 +1296,47 @@
         const seconds = remain % 60;
         if (minutes > 0) return `${minutes}분 ${seconds}초`;
         return `${seconds}초`;
+      }
+
+      function getDataSourceCandidates() {
+        const ts = Date.now();
+        if (location.protocol === "file:") {
+          return [`${REMOTE_DATA_URL}?ts=${ts}`, `./data.js?ts=${ts}`];
+        }
+        return [`./data.js?ts=${ts}`];
+      }
+
+      async function fetchBoardDataScriptText(url) {
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`data.js fetch failed: ${response.status}`);
+        }
+        return response.text();
+      }
+
+      function loadBoardDataViaScript(url) {
+        return new Promise((resolve, reject) => {
+          const previousPayload = window.BOARD_DATA;
+          const script = document.createElement("script");
+          script.src = url;
+          script.async = true;
+          script.onload = () => {
+            script.remove();
+            const parsed = window.BOARD_DATA;
+            if (parsed && parsed.boards) {
+              resolve(parsed);
+              return;
+            }
+            window.BOARD_DATA = previousPayload;
+            reject(new Error("data.js script parse failed"));
+          };
+          script.onerror = () => {
+            script.remove();
+            window.BOARD_DATA = previousPayload;
+            reject(new Error("data.js script load failed"));
+          };
+          document.head.appendChild(script);
+        });
       }
 
       function parseBoardDataScript(scriptText) {
@@ -1326,15 +1370,31 @@
 
       async function fetchLatestBoardData() {
         const beforeGeneratedAt = Number(data.generatedAt) || 0;
-        const response = await fetch(`./data.js?ts=${Date.now()}`, { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error(`data.js fetch failed: ${response.status}`);
+        let parsed = null;
+        let lastError = null;
+        for (const candidate of getDataSourceCandidates()) {
+          try {
+            let maybeParsed = null;
+            try {
+              const scriptText = await fetchBoardDataScriptText(candidate);
+              maybeParsed = parseBoardDataScript(scriptText);
+            } catch (_error) {
+              maybeParsed = await loadBoardDataViaScript(candidate);
+            }
+            if (maybeParsed && maybeParsed.boards) {
+              parsed = maybeParsed;
+              break;
+            }
+            lastError = new Error("data.js parse failed");
+          } catch (error) {
+            lastError = error;
+          }
         }
-        const scriptText = await response.text();
-        const parsed = parseBoardDataScript(scriptText);
+
         if (!parsed || !parsed.boards) {
-          throw new Error("data.js parse failed");
+          throw lastError || new Error("data.js load failed");
         }
+
         data = parsed;
         window.BOARD_DATA = parsed;
         renderSummaryStats();
