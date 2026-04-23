@@ -262,6 +262,23 @@
         font-size: 13px;
       }
 
+      .manual-refresh-btn {
+        cursor: pointer;
+        color: #def2fc;
+        transition: border-color 0.16s ease, background-color 0.16s ease, color 0.16s ease;
+      }
+
+      .manual-refresh-btn:hover:not(:disabled) {
+        border-color: rgba(117, 221, 255, 0.35);
+        background: rgba(117, 221, 255, 0.1);
+        color: #f3fbff;
+      }
+
+      .manual-refresh-btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
       .auto-dot {
         width: 8px;
         height: 8px;
@@ -715,6 +732,8 @@
             <div class="auto-pill"><span class="auto-dot"></span><span id="autoUpdateStatus"></span></div>
             <div class="auto-pill" id="lastUpdatedStatus"></div>
             <div class="auto-pill" id="fxRateStatus"></div>
+            <button class="auto-pill manual-refresh-btn" id="manualRefreshBtn" type="button">수동 갱신</button>
+            <div class="auto-pill" id="manualRefreshHint">수동 갱신 가능</div>
           </div>
         </div>
       </section>
@@ -802,8 +821,10 @@
     const SITE_PASSWORD = "zhdlsvks2026";
     const LOCK_AUTH_UNTIL_KEY = "fdv_lock_until_v1";
     const LOCK_EXTEND_COUNT_KEY = "fdv_lock_extend_count_v1";
+    const MANUAL_REFRESH_LAST_KEY = "fdv_manual_refresh_last_v1";
     const LOCK_TTL_MS = 24 * 60 * 60 * 1000;
     const LOCK_EXTEND_MAX = 3;
+    const MANUAL_REFRESH_COOLDOWN_MS = 10 * 60 * 1000;
 
     const TEXT = {
       eyebrow: "Exchange Market Cap",
@@ -820,6 +841,12 @@
         compareNone: "\uBE44\uAD50 \uC548 \uD568",
         autoUpdateOn: "\uC790\uB3D9 \uAC31\uC2E0 \uCF1C\uC9D0",
         autoUpdateEvery: "{minutes}\uBD84\uB9C8\uB2E4 \uB370\uC774\uD130 \uAC31\uC2E0",
+        manualRefresh: "\uC218\uB3D9 \uAC31\uC2E0",
+        manualRefreshBusy: "\uAC31\uC2E0 \uC911...",
+        manualRefreshReady: "\uC218\uB3D9 \uAC31\uC2E0 \uAC00\uB2A5",
+        manualRefreshDone: "\uC218\uB3D9 \uAC31\uC2E0 \uC644\uB8CC: {time}",
+        manualRefreshFailed: "\uC218\uB3D9 \uAC31\uC2E0 \uC2E4\uD328 (\uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4)",
+        manualRefreshWait: "\uC548\uC815\uC131 \uBCF4\uD638\ub85C {remain} \uD6C4 \uAC00\uB2A5",
         lastUpdated: "\uB9C8\uC9C0\uB9C9 \uB370\uC774\uD130 \uAC31\uC2E0: {time}",
         newsOpen: "\uB274\uC2A4",
         newsTitle: "",
@@ -864,7 +891,7 @@
       };
 
     const appShell = document.getElementById("appShell");
-    const data = window.BOARD_DATA || {
+    let data = window.BOARD_DATA || {
       boards: { binance: [], upbit: [], bithumb: [] },
       stats: {},
       notes: {},
@@ -882,6 +909,8 @@
       const autoUpdateStatus = document.getElementById("autoUpdateStatus");
       const lastUpdatedStatus = document.getElementById("lastUpdatedStatus");
       const fxRateStatus = document.getElementById("fxRateStatus");
+      const manualRefreshBtn = document.getElementById("manualRefreshBtn");
+      const manualRefreshHint = document.getElementById("manualRefreshHint");
       const thPrice = document.getElementById("thPrice");
       const thCap = document.getElementById("thCap");
       const thFdv = document.getElementById("thFdv");
@@ -1248,6 +1277,69 @@
         fxRateStatus.textContent = `USDT 환율 ${fxRateText} (${fxSourceText})`;
       }
 
+      function getManualRefreshLastTs() {
+        const raw = Number(localStorage.getItem(MANUAL_REFRESH_LAST_KEY));
+        return Number.isFinite(raw) ? raw : 0;
+      }
+
+      function setManualRefreshLastTs(ts) {
+        localStorage.setItem(MANUAL_REFRESH_LAST_KEY, String(Math.max(0, Math.floor(ts))));
+      }
+
+      function formatRemainingDuration(ms) {
+        const remain = Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
+        const minutes = Math.floor(remain / 60);
+        const seconds = remain % 60;
+        if (minutes > 0) return `${minutes}분 ${seconds}초`;
+        return `${seconds}초`;
+      }
+
+      function parseBoardDataScript(scriptText) {
+        const marker = "window.BOARD_DATA =";
+        const idx = String(scriptText || "").indexOf(marker);
+        if (idx < 0) return null;
+        const payload = String(scriptText || "").slice(idx + marker.length).trim().replace(/;+\s*$/, "");
+        return JSON.parse(payload);
+      }
+
+      function renderSummaryStats() {
+        statBinance.textContent = `${formatNumber(data.stats.binance?.total || 0, 0)} / ${formatNumber(data.stats.binance?.withCap || 0, 0)}`;
+        statUpbit.textContent = `${formatNumber(data.stats.upbit?.total || 0, 0)} / ${formatNumber(data.stats.upbit?.withCap || 0, 0)}`;
+        statBithumb.textContent = `${formatNumber(data.stats.bithumb?.total || 0, 0)} / ${formatNumber(data.stats.bithumb?.withCap || 0, 0)}`;
+      }
+
+      function renderManualRefreshState() {
+        const now = Date.now();
+        const cooldownEnd = getManualRefreshLastTs() + MANUAL_REFRESH_COOLDOWN_MS;
+        const remainMs = cooldownEnd - now;
+        if (remainMs > 0) {
+          manualRefreshBtn.disabled = true;
+          manualRefreshHint.textContent = TEXT.manualRefreshWait.replace("{remain}", formatRemainingDuration(remainMs));
+          return;
+        }
+        manualRefreshBtn.disabled = false;
+        if (!manualRefreshHint.textContent || manualRefreshHint.textContent === TEXT.manualRefreshBusy) {
+          manualRefreshHint.textContent = TEXT.manualRefreshReady;
+        }
+      }
+
+      async function fetchLatestBoardData() {
+        const response = await fetch(`./data.js?ts=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`data.js fetch failed: ${response.status}`);
+        }
+        const scriptText = await response.text();
+        const parsed = parseBoardDataScript(scriptText);
+        if (!parsed || !parsed.boards) {
+          throw new Error("data.js parse failed");
+        }
+        data = parsed;
+        window.BOARD_DATA = parsed;
+        renderSummaryStats();
+        renderAutoStatus();
+        render();
+      }
+
       function setViewMode(mode) {
         state.viewMode = mode === "news" ? "news" : "market";
         const isNewsMode = state.viewMode === "news";
@@ -1449,15 +1541,57 @@
         goHomeView();
       });
 
-      statBinance.textContent = `${formatNumber(data.stats.binance?.total || 0, 0)} / ${formatNumber(data.stats.binance?.withCap || 0, 0)}`;
-      statUpbit.textContent = `${formatNumber(data.stats.upbit?.total || 0, 0)} / ${formatNumber(data.stats.upbit?.withCap || 0, 0)}`;
-      statBithumb.textContent = `${formatNumber(data.stats.bithumb?.total || 0, 0)} / ${formatNumber(data.stats.bithumb?.withCap || 0, 0)}`;
+      manualRefreshBtn.textContent = TEXT.manualRefresh;
+      renderSummaryStats();
       renderAutoStatus();
+      renderManualRefreshState();
       renderLockTtl();
       setViewMode("market");
       checkSiteLock();
+
+      manualRefreshBtn.addEventListener("click", async () => {
+        const now = Date.now();
+        const remainMs = getManualRefreshLastTs() + MANUAL_REFRESH_COOLDOWN_MS - now;
+        if (remainMs > 0) {
+          renderManualRefreshState();
+          return;
+        }
+        manualRefreshBtn.disabled = true;
+        manualRefreshBtn.textContent = TEXT.manualRefreshBusy;
+        manualRefreshHint.textContent = TEXT.manualRefreshBusy;
+        try {
+          await fetchLatestBoardData();
+          const doneAt = Date.now();
+          setManualRefreshLastTs(doneAt);
+          manualRefreshHint.textContent = TEXT.manualRefreshDone.replace(
+            "{time}",
+            new Date(doneAt).toLocaleTimeString("ko-KR")
+          );
+        } catch (error) {
+          console.error(error);
+          manualRefreshHint.textContent = TEXT.manualRefreshFailed;
+        } finally {
+          manualRefreshBtn.textContent = TEXT.manualRefresh;
+          renderManualRefreshState();
+        }
+      });
+
+      let autoRefreshInFlight = false;
+      async function runAutoRefreshTick() {
+        if (autoRefreshInFlight) return;
+        autoRefreshInFlight = true;
+        try {
+          await fetchLatestBoardData();
+        } catch (error) {
+          console.error(error);
+        } finally {
+          autoRefreshInFlight = false;
+        }
+      }
+
       window.setInterval(() => {
         renderLockTtl();
+        renderManualRefreshState();
         const until = getLockAuthUntil();
         if (until <= Date.now() && !document.body.classList.contains("locked")) {
           checkSiteLock();
@@ -1465,7 +1599,9 @@
       }, 1000);
       const autoRefreshMinutes = Math.max(1, Number(data.autoRefreshMinutes) || 60);
       const autoRefreshMs = autoRefreshMinutes * 60 * 1000;
-      window.setTimeout(() => window.location.reload(), autoRefreshMs);
+      window.setInterval(() => {
+        runAutoRefreshTick();
+      }, autoRefreshMs);
       render();
     </script>
   </body>

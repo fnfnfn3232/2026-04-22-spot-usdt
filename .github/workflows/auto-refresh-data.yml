@@ -2,8 +2,7 @@ name: Auto Refresh Data
 
 on:
   schedule:
-    # Top-of-hour congestion can skip runs; offset for better schedule reliability.
-    - cron: "7,37 * * * *"
+    - cron: "0,30 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -11,7 +10,7 @@ permissions:
 
 concurrency:
   group: auto-refresh-data
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   refresh:
@@ -33,7 +32,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          for attempt in 1 2 3; do
+          for attempt in 1 2 3 4 5; do
             echo "Attempt $attempt: sync with origin/main"
             git fetch origin main
             git checkout -B main origin/main
@@ -66,9 +65,10 @@ jobs:
             fi
 
             echo "Push rejected, retrying..."
+            git fetch origin main
             git reset --hard origin/main
             sleep 2
           done
 
-          echo "Failed to push after 3 attempts"
+          echo "Failed to push after 5 attempts"
           exit 1
