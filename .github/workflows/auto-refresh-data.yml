@@ -10,7 +10,7 @@ on:
       - "mapping.json"
   schedule:
     # UTC minute 기준. 정시/30분 혼잡을 피해서 41분 간격 2회 실행(한국시간 매시 11분, 41분).
-    - cron: "11,41 * * * *"
+    - cron: "3,13,23,33,43,53 * * * *"
   workflow_dispatch:
 
 permissions:
