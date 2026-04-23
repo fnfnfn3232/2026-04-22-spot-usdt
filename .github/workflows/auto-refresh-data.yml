@@ -6,9 +6,11 @@ on:
       - main
     paths:
       - ".github/workflows/auto-refresh-data.yml"
-      - ".github/workflows/auto-refresh-schedule.yml"
       - "build_data.py"
       - "mapping.json"
+  schedule:
+    # Every 10 minutes (UTC)
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:
