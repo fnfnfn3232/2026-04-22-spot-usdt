@@ -1,14 +1,9 @@
-name: Auto Refresh Data
+name: Auto Refresh Schedule
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/auto-refresh-data.yml"
-      - ".github/workflows/auto-refresh-schedule.yml"
-      - "build_data.py"
-      - "mapping.json"
+  schedule:
+    # Every 10 minutes (UTC).
+    - cron: "3,13,23,33,43,53 * * * *"
   workflow_dispatch:
 
 permissions:
