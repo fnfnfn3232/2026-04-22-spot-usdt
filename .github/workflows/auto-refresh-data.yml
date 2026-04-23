@@ -1,8 +1,16 @@
 name: Auto Refresh Data
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/auto-refresh-data.yml"
+      - "build_data.py"
+      - "mapping.json"
   schedule:
-    - cron: "0,30 * * * *"
+    # UTC minute 기준. 정시/30분 혼잡을 피해서 41분 간격 2회 실행(한국시간 매시 11분, 41분).
+    - cron: "11,41 * * * *"
   workflow_dispatch:
 
 permissions:
