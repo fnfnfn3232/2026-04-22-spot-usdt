@@ -35,6 +35,12 @@ UPBIT_PREFER_BITHUMB_FILL_SYMBOL_MAP = {
 BITHUMB_SUPPLY_PREFER_UPBIT_SYMBOL_MAP = {
     "ORDER": "ORDER",
 }
+SUSPICIOUS_DROP_MIN_RATIO = 0.90
+SUSPICIOUS_DROP_MIN_ABS = {
+    "binance": 40,
+    "upbit": 20,
+    "bithumb": 30,
+}
 
 
 def normalize_text(value: str | None) -> str:
@@ -89,6 +95,49 @@ def normalize_previous_board_rows(rows: list[dict], *, board_name: str, error_te
         row["fallbackSource"] = f"previous_payload:{board_name}"
         row["fallbackError"] = error_text
     return rows
+
+
+def apply_suspicious_drop_guard(
+    board_name: str,
+    current_rows: list[dict],
+    previous_payload: dict | None,
+) -> tuple[list[dict], str | None]:
+    previous_rows = clone_previous_board_rows(previous_payload, board_name)
+    previous_count = len(previous_rows)
+    current_count = len(current_rows)
+
+    if previous_count <= 0:
+        return current_rows, None
+
+    if current_count <= 0:
+        reason = f"suspicious_row_drop:{current_count}/{previous_count}"
+        fallback_rows = normalize_previous_board_rows(
+            previous_rows,
+            board_name=board_name,
+            error_text=reason,
+        )
+        return fallback_rows, reason
+
+    if current_count >= previous_count:
+        return current_rows, None
+
+    drop_abs = previous_count - current_count
+    drop_ratio = current_count / previous_count
+    min_abs = SUSPICIOUS_DROP_MIN_ABS.get(board_name, 20)
+    if (
+        previous_count >= 100
+        and drop_abs >= min_abs
+        and drop_ratio < SUSPICIOUS_DROP_MIN_RATIO
+    ):
+        reason = f"suspicious_row_drop:{current_count}/{previous_count}"
+        fallback_rows = normalize_previous_board_rows(
+            previous_rows,
+            board_name=board_name,
+            error_text=reason,
+        )
+        return fallback_rows, reason
+
+    return current_rows, None
 
 
 def fetch_json(url: str, *, retries: int = 3, pause: float = 1.0) -> dict | list:
@@ -1241,6 +1290,11 @@ def make_payload(previous_payload: dict | None = None) -> dict:
         )
         _binance_lookup = build_rows_by_symbol(binance_rows)
         refresh_issues["binance"] = f"fallback_previous_payload:{error}"
+    guard_rows, guard_reason = apply_suspicious_drop_guard("binance", binance_rows, previous_payload)
+    if guard_reason:
+        binance_rows = guard_rows
+        _binance_lookup = build_rows_by_symbol(binance_rows)
+        refresh_issues["binance"] = f"fallback_previous_payload:{guard_reason}"
 
     try:
         upbit_rows, _upbit_lookup = fetch_upbit()
@@ -1255,6 +1309,11 @@ def make_payload(previous_payload: dict | None = None) -> dict:
         )
         _upbit_lookup = build_rows_by_symbol(upbit_rows)
         refresh_issues["upbit"] = f"fallback_previous_payload:{error}"
+    guard_rows, guard_reason = apply_suspicious_drop_guard("upbit", upbit_rows, previous_payload)
+    if guard_reason:
+        upbit_rows = guard_rows
+        _upbit_lookup = build_rows_by_symbol(upbit_rows)
+        refresh_issues["upbit"] = f"fallback_previous_payload:{guard_reason}"
 
     try:
         bithumb_rows = fetch_bithumb()
@@ -1268,6 +1327,10 @@ def make_payload(previous_payload: dict | None = None) -> dict:
             error_text=str(error),
         )
         refresh_issues["bithumb"] = f"fallback_previous_payload:{error}"
+    guard_rows, guard_reason = apply_suspicious_drop_guard("bithumb", bithumb_rows, previous_payload)
+    if guard_reason:
+        bithumb_rows = guard_rows
+        refresh_issues["bithumb"] = f"fallback_previous_payload:{guard_reason}"
 
     news_payload = fetch_coinness_news((previous_payload or {}).get("news"))
     apply_upbit_live_fills(upbit_rows, binance_rows, bithumb_rows)
