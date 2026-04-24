@@ -9,8 +9,8 @@ on:
       - "build_data.py"
       - "mapping.json"
   schedule:
-    # Every 10 minutes (UTC)
-    - cron: "*/10 * * * *"
+    # Every 10 minutes (UTC), offset from peak :00/:10 queues for better reliability
+    - cron: "3,13,23,33,43,53 * * * *"
   workflow_dispatch:
 
 permissions:
