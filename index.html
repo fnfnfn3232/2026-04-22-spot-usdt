@@ -341,7 +341,7 @@
 
       .compare-grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(220px, 280px));
+        grid-template-columns: minmax(220px, 280px) auto minmax(220px, 280px);
         gap: 12px;
         margin-top: 14px;
       }
@@ -350,6 +350,40 @@
         display: flex;
         flex-direction: column;
         gap: 8px;
+      }
+
+      .compare-swap-wrap {
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+      }
+
+      .compare-swap-btn {
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.05);
+        color: #d5ebf5;
+        font-size: 20px;
+        font-weight: 800;
+        line-height: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: border-color 0.16s ease, color 0.16s ease, background-color 0.16s ease;
+      }
+
+      .compare-swap-btn:hover:not(:disabled) {
+        border-color: rgba(117, 221, 255, 0.38);
+        color: #effbff;
+        background: rgba(117, 221, 255, 0.12);
+      }
+
+      .compare-swap-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
       }
 
       .field label {
@@ -698,6 +732,11 @@
             grid-template-columns: 1fr;
           }
 
+          .compare-swap-wrap {
+            align-items: center;
+            margin-top: -2px;
+          }
+
           }
     </style>
   </head>
@@ -756,6 +795,9 @@
             <option value="upbit"></option>
             <option value="bithumb"></option>
           </select>
+        </div>
+        <div class="compare-swap-wrap">
+          <button class="compare-swap-btn" id="compareSwapBtn" type="button" aria-label="기준/비교 거래소 바꾸기" title="기준/비교 거래소 바꾸기">⇄</button>
         </div>
         <div class="field">
           <label for="compareBoardSelect" id="compareTargetLabel"></label>
@@ -958,6 +1000,7 @@
       const thFdv = document.getElementById("thFdv");
       const baseBoardSelect = document.getElementById("baseBoardSelect");
       const compareBoardSelect = document.getElementById("compareBoardSelect");
+      const compareSwapBtn = document.getElementById("compareSwapBtn");
       const titleHeading = document.getElementById("title");
       const newsToggleBtn = document.getElementById("newsToggleBtn");
       const siteLock = document.getElementById("siteLock");
@@ -1099,6 +1142,7 @@
       compareBoardSelect.options[1].textContent = TEXT.tabBinance;
       compareBoardSelect.options[2].textContent = TEXT.tabUpbit;
       compareBoardSelect.options[3].textContent = TEXT.tabBithumb;
+      compareSwapBtn.title = "\uAE30\uC900/\uBE44\uAD50 \uAC70\uB798\uC18C \uBC14\uAFB8\uAE30";
       baseBoardSelect.value = state.board;
       compareBoardSelect.value = state.compareBoard;
       searchInput.placeholder = TEXT.placeholder;
@@ -1913,6 +1957,7 @@
 
         baseBoardSelect.value = state.board;
         compareBoardSelect.value = state.compareBoard;
+        compareSwapBtn.disabled = !(state.compareBoard && state.compareBoard !== state.board);
 
         const withCapCount = rows.filter((row) => Number.isFinite(row.sortCapUsd)).length;
         const withPriceCount = rows.filter((row) => Number.isFinite(Number(row.priceUsd)) || Number.isFinite(Number(row.priceKrw))).length;
@@ -1949,6 +1994,16 @@
       compareBoardSelect.addEventListener("change", (event) => {
         setViewMode("market");
         state.compareBoard = event.target.value || "";
+        state.page = 1;
+        render();
+      });
+
+      compareSwapBtn.addEventListener("click", () => {
+        if (!state.compareBoard || state.compareBoard === state.board) return;
+        setViewMode("market");
+        const currentBase = state.board;
+        state.board = state.compareBoard;
+        state.compareBoard = currentBase;
         state.page = 1;
         render();
       });
