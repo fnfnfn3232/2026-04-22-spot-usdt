@@ -1847,25 +1847,49 @@
         return new Set(rows.map((item) => String(item.symbol || "").toUpperCase()));
       }
 
+      function getQueryPriority(row, query) {
+        const q = String(query || "").trim().toLowerCase();
+        if (!q) return 999;
+
+        const symbol = String(row.symbol || "").toLowerCase();
+        const pair = String(row.pair || "").toLowerCase();
+        const name = String(row.name || "").toLowerCase();
+        const englishName = String(row.englishName || "").toLowerCase();
+        const koreanName = String(row.koreanName || "").toLowerCase();
+
+        if (symbol === q) return 0;
+        if (pair === q || pair.startsWith(`${q}/`)) return 1;
+        if (symbol.startsWith(q)) return 2;
+        if (symbol.includes(q)) return 3;
+        if (name.startsWith(q) || englishName.startsWith(q) || koreanName.startsWith(q)) return 4;
+        return 5;
+      }
+
         function getRows() {
           const rows = data.boards[state.board] || [];
           const compareSymbols = state.compareBoard ? getCompareSymbolSet(state.compareBoard) : null;
+          const query = state.query.trim().toLowerCase();
           const compared = state.compareBoard
             ? rows.filter((row) => {
                 return compareSymbols.has(String(row.symbol || "").toUpperCase());
               })
             : [...rows];
 
-          const filtered = !state.query.trim()
+          const filtered = !query
             ? compared
             : compared.filter((row) => {
-                const query = state.query.trim().toLowerCase();
                 return [row.name, row.symbol, row.pair, row.englishName, row.koreanName, row.capSource]
                   .filter(Boolean)
                 .some((value) => String(value).toLowerCase().includes(query));
             });
 
         return filtered.sort((a, b) => {
+          if (query) {
+            const aPriority = getQueryPriority(a, query);
+            const bPriority = getQueryPriority(b, query);
+            if (aPriority !== bPriority) return aPriority - bPriority;
+          }
+
           const aMissing = !Number.isFinite(a.sortCapUsd);
           const bMissing = !Number.isFinite(b.sortCapUsd);
 

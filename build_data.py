@@ -1035,20 +1035,24 @@ def apply_bithumb_supply_fills(
         if not symbol:
             continue
 
-        preferred_upbit_symbol = BITHUMB_SUPPLY_PREFER_UPBIT_SYMBOL_MAP.get(symbol)
-        if preferred_upbit_symbol:
-            candidate = pick_first_candidate_with_supply(upbit_by_symbol.get(preferred_upbit_symbol, []))
-            source_detail = f"upbit_info_tab_cmc_first|preferred:{preferred_upbit_symbol}"
-        else:
-            candidate = None
-            source_detail = ""
+        # Same-symbol is the most stable primary key between Binance and Bithumb here.
+        candidate = pick_first_candidate_with_supply(binance_by_symbol.get(symbol, []))
+        source_detail = "binance_symbol_list|same_symbol"
+
+        if candidate is None:
+            preferred_upbit_symbol = BITHUMB_SUPPLY_PREFER_UPBIT_SYMBOL_MAP.get(symbol)
+            if preferred_upbit_symbol:
+                candidate = pick_first_candidate_with_supply(upbit_by_symbol.get(preferred_upbit_symbol, []))
+                source_detail = f"upbit_info_tab_cmc_first|preferred:{preferred_upbit_symbol}"
+            else:
+                source_detail = ""
 
         if candidate is None:
             candidate = pick_supply_fill_candidate(bithumb_row, upbit_by_symbol.get(symbol, []))
             source_detail = "upbit_info_tab_cmc_first"
         if candidate is None:
             candidate = pick_supply_fill_candidate(bithumb_row, binance_by_symbol.get(symbol, []))
-            source_detail = "binance_symbol_list"
+            source_detail = "binance_symbol_list|name_key_overlap"
 
         if candidate is None:
             continue
