@@ -826,6 +826,8 @@
     const LOCK_EXTEND_MAX = 3;
     const MANUAL_REFRESH_COOLDOWN_MS = 30 * 1000;
     const REMOTE_DATA_URL = "https://raw.githubusercontent.com/fnfnfn3232/2026-04-22-spot-usdt/auto-data/data.js";
+    const LIVE_MARKET_REFRESH_MS = 10 * 60 * 1000;
+    const UPBIT_TICKER_BATCH_SIZE = 100;
 
     const TEXT = {
       eyebrow: "Exchange Market Cap",
@@ -1298,6 +1300,286 @@
         return `${seconds}초`;
       }
 
+      function toPositiveNumber(value) {
+        const number = Number(value);
+        return Number.isFinite(number) && number > 0 ? number : null;
+      }
+
+      function computeCirculatingRatio(circulating, total) {
+        if (!Number.isFinite(circulating) || !Number.isFinite(total) || total <= 0) return null;
+        return Math.min(1, Math.max(0, circulating / total));
+      }
+
+      function recomputeDerivedFields(row, options = {}) {
+        const opts = options || {};
+        const preferComputedCap = Boolean(opts.preferComputedCap);
+        const fx = toPositiveNumber(data.fxUsdKrw);
+
+        let priceUsd = toPositiveNumber(row.priceUsd);
+        let priceKrw = toPositiveNumber(row.priceKrw);
+        const circulatingSupply = toPositiveNumber(row.circulatingSupply);
+        const totalSupply = toPositiveNumber(row.totalSupply);
+
+        if (priceUsd === null && priceKrw !== null && fx !== null) {
+          priceUsd = priceKrw / fx;
+        }
+        if (priceKrw === null && priceUsd !== null && fx !== null) {
+          priceKrw = priceUsd * fx;
+        }
+
+        if (priceUsd !== null) row.priceUsd = priceUsd;
+        if (priceKrw !== null) row.priceKrw = priceKrw;
+
+        if (circulatingSupply !== null && (priceUsd !== null || priceKrw !== null)) {
+          if (preferComputedCap) {
+            if (priceUsd !== null) {
+              row.marketCapUsd = priceUsd * circulatingSupply;
+            } else if (priceKrw !== null && fx !== null) {
+              row.marketCapUsd = (priceKrw * circulatingSupply) / fx;
+            }
+          }
+          if (!Number.isFinite(Number(row.marketCapUsd)) && priceUsd !== null) {
+            row.marketCapUsd = priceUsd * circulatingSupply;
+          }
+        }
+
+        if (!Number.isFinite(Number(row.marketCapKrw)) && Number.isFinite(Number(row.marketCapUsd)) && fx !== null) {
+          row.marketCapKrw = Number(row.marketCapUsd) * fx;
+        }
+        if (!Number.isFinite(Number(row.marketCapUsd)) && Number.isFinite(Number(row.marketCapKrw)) && fx !== null) {
+          row.marketCapUsd = Number(row.marketCapKrw) / fx;
+        }
+
+        if (totalSupply !== null && (priceUsd !== null || priceKrw !== null)) {
+          let fdvUsd = null;
+          if (priceUsd !== null) {
+            fdvUsd = priceUsd * totalSupply;
+          } else if (priceKrw !== null && fx !== null) {
+            fdvUsd = (priceKrw * totalSupply) / fx;
+          }
+          if (fdvUsd !== null) {
+            row.fdvUsd = fdvUsd;
+            if (fx !== null) {
+              row.fdvKrw = fdvUsd * fx;
+            }
+          }
+        } else if (!Number.isFinite(Number(row.fdvKrw)) && Number.isFinite(Number(row.fdvUsd)) && fx !== null) {
+          row.fdvKrw = Number(row.fdvUsd) * fx;
+        }
+
+        row.circulatingRatio = computeCirculatingRatio(circulatingSupply, totalSupply);
+        const sortCapUsd = toPositiveNumber(row.marketCapUsd);
+        if (sortCapUsd !== null) {
+          row.sortCapUsd = sortCapUsd;
+        } else if (toPositiveNumber(row.marketCapKrw) !== null && fx !== null) {
+          row.sortCapUsd = Number(row.marketCapKrw) / fx;
+        } else {
+          row.sortCapUsd = null;
+        }
+      }
+
+      function sortBoardRowsByCap(rows) {
+        rows.sort((a, b) => {
+          const aCap = toPositiveNumber(a.sortCapUsd);
+          const bCap = toPositiveNumber(b.sortCapUsd);
+          const aMissing = aCap === null;
+          const bMissing = bCap === null;
+          if (aMissing && bMissing) {
+            return String(a.symbol || "").localeCompare(String(b.symbol || ""));
+          }
+          if (aMissing) return 1;
+          if (bMissing) return -1;
+          return bCap - aCap || String(a.symbol || "").localeCompare(String(b.symbol || ""));
+        });
+      }
+
+      async function fetchJsonNoCache(url) {
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`fetch failed: ${response.status} (${url})`);
+        }
+        return response.json();
+      }
+
+      function chunkArray(items, size) {
+        const result = [];
+        for (let index = 0; index < items.length; index += size) {
+          result.push(items.slice(index, index + size));
+        }
+        return result;
+      }
+
+      async function refreshBinanceLiveRows() {
+        const rows = data.boards?.binance || [];
+        if (!rows.length) return 0;
+
+        const payload = await fetchJsonNoCache("https://api.binance.com/api/v3/ticker/price");
+        if (!Array.isArray(payload)) return 0;
+
+        const priceMap = new Map();
+        for (const item of payload) {
+          if (!item || typeof item !== "object") continue;
+          const key = String(item.symbol || "").toUpperCase();
+          const price = toPositiveNumber(item.price);
+          if (!key || price === null) continue;
+          priceMap.set(key, price);
+        }
+
+        let changed = 0;
+        for (const row of rows) {
+          const symbol = String(row.symbol || "").toUpperCase();
+          if (!symbol) continue;
+          const priceUsd = toPositiveNumber(priceMap.get(`${symbol}USDT`));
+          if (priceUsd === null) continue;
+          row.priceUsd = priceUsd;
+          if (toPositiveNumber(data.fxUsdKrw) !== null) {
+            row.priceKrw = priceUsd * Number(data.fxUsdKrw);
+          }
+          recomputeDerivedFields(row, { preferComputedCap: true });
+          changed += 1;
+        }
+
+        sortBoardRowsByCap(rows);
+        return changed;
+      }
+
+      async function refreshUpbitLiveRows() {
+        const rows = data.boards?.upbit || [];
+        if (!rows.length) return 0;
+
+        const marketMap = new Map();
+        for (const row of rows) {
+          const symbol = String(row.symbol || "").toUpperCase();
+          if (!symbol) continue;
+          const market = `KRW-${symbol}`;
+          if (!marketMap.has(market)) marketMap.set(market, []);
+          marketMap.get(market).push(row);
+        }
+
+        const markets = Array.from(marketMap.keys());
+        if (!markets.length) return 0;
+        let changed = 0;
+
+        for (const group of chunkArray(markets, UPBIT_TICKER_BATCH_SIZE)) {
+          const query = encodeURIComponent(group.join(","));
+          const payload = await fetchJsonNoCache(`https://api.upbit.com/v1/ticker?markets=${query}`);
+          if (!Array.isArray(payload)) continue;
+          for (const item of payload) {
+            const market = String(item?.market || "").toUpperCase();
+            const priceKrw = toPositiveNumber(item?.trade_price);
+            if (!market || priceKrw === null) continue;
+            const targetRows = marketMap.get(market) || [];
+            for (const row of targetRows) {
+              row.priceKrw = priceKrw;
+              if (toPositiveNumber(data.fxUsdKrw) !== null) {
+                row.priceUsd = priceKrw / Number(data.fxUsdKrw);
+              }
+              recomputeDerivedFields(row, { preferComputedCap: true });
+              changed += 1;
+            }
+          }
+        }
+
+        sortBoardRowsByCap(rows);
+        return changed;
+      }
+
+      async function refreshBithumbLiveRows() {
+        const rows = data.boards?.bithumb || [];
+        if (!rows.length) return 0;
+
+        const [tickerResult, capResult] = await Promise.allSettled([
+          fetchJsonNoCache("https://api.bithumb.com/public/ticker/ALL_KRW"),
+          fetchJsonNoCache("https://gw.bithumb.com/exchange/v1/trade/coinmarketcap"),
+        ]);
+
+        const priceMap = new Map();
+        if (tickerResult.status === "fulfilled") {
+          const tickerPayload = tickerResult.value;
+          const tickerData = tickerPayload && typeof tickerPayload === "object" ? tickerPayload.data : null;
+          if (tickerData && typeof tickerData === "object") {
+            for (const [symbol, item] of Object.entries(tickerData)) {
+              const symbolText = String(symbol || "").toUpperCase();
+              if (!symbolText || symbolText === "DATE") continue;
+              const price = toPositiveNumber(item?.closing_price);
+              if (price === null) continue;
+              priceMap.set(symbolText, price);
+            }
+          }
+        }
+
+        const capMap = new Map();
+        if (capResult.status === "fulfilled") {
+          const capPayload = capResult.value;
+          const capData = capPayload && typeof capPayload === "object" ? capPayload.data : null;
+          if (capData && typeof capData === "object") {
+            for (const [coinType, capValue] of Object.entries(capData)) {
+              const cap = toPositiveNumber(capValue);
+              if (cap === null) continue;
+              capMap.set(String(coinType || "").toUpperCase(), cap);
+            }
+          }
+        }
+
+        let changed = 0;
+        for (const row of rows) {
+          const symbol = String(row.symbol || "").toUpperCase();
+          const coinType = String(row.coinType || "").toUpperCase();
+          const priceKrw = toPositiveNumber(priceMap.get(symbol));
+          const capKrw = toPositiveNumber(capMap.get(coinType));
+
+          if (priceKrw !== null) {
+            row.priceKrw = priceKrw;
+            if (toPositiveNumber(data.fxUsdKrw) !== null) {
+              row.priceUsd = priceKrw / Number(data.fxUsdKrw);
+            }
+            changed += 1;
+          }
+
+          if (capKrw !== null) {
+            row.marketCapKrw = capKrw;
+            if (toPositiveNumber(data.fxUsdKrw) !== null) {
+              row.marketCapUsd = capKrw / Number(data.fxUsdKrw);
+            }
+            changed += 1;
+          }
+
+          recomputeDerivedFields(row, { preferComputedCap: false });
+        }
+
+        sortBoardRowsByCap(rows);
+        return changed;
+      }
+
+      let liveRefreshInFlight = false;
+      async function refreshLiveMarketData() {
+        if (liveRefreshInFlight) return { changed: 0 };
+        liveRefreshInFlight = true;
+        try {
+          const tasks = await Promise.allSettled([
+            refreshBinanceLiveRows(),
+            refreshUpbitLiveRows(),
+            refreshBithumbLiveRows(),
+          ]);
+          const changed = tasks.reduce((sum, item) => {
+            if (item.status !== "fulfilled") return sum;
+            const count = Number(item.value);
+            return sum + (Number.isFinite(count) ? count : 0);
+          }, 0);
+
+          if (changed > 0) {
+            data.generatedAt = Math.floor(Date.now() / 1000);
+            renderSummaryStats();
+            renderAutoStatus();
+            render();
+          }
+
+          return { changed };
+        } finally {
+          liveRefreshInFlight = false;
+        }
+      }
+
       function getDataSourceCandidates() {
         const ts = Date.now();
         return [`${REMOTE_DATA_URL}?ts=${ts}`, `./data.js?ts=${ts}`];
@@ -1623,11 +1905,33 @@
         manualRefreshBtn.textContent = TEXT.manualRefreshBusy;
         manualRefreshHint.textContent = TEXT.manualRefreshBusy;
         try {
-          const result = await fetchLatestBoardData();
+          let anySuccess = false;
+          let changed = false;
+
+          try {
+            const fileResult = await fetchLatestBoardData();
+            anySuccess = true;
+            changed = changed || Boolean(fileResult && fileResult.changed);
+          } catch (error) {
+            console.error(error);
+          }
+
+          try {
+            const liveResult = await refreshLiveMarketData();
+            anySuccess = true;
+            changed = changed || Number(liveResult?.changed || 0) > 0;
+          } catch (error) {
+            console.error(error);
+          }
+
+          if (!anySuccess) {
+            throw new Error("manual refresh failed");
+          }
+
           const doneAt = Date.now();
           setManualRefreshLastTs(doneAt);
           const doneText = new Date(doneAt).toLocaleTimeString("ko-KR");
-          manualRefreshHint.textContent = (result && result.changed ? TEXT.manualRefreshDone : TEXT.manualRefreshUnchanged).replace(
+          manualRefreshHint.textContent = (changed ? TEXT.manualRefreshDone : TEXT.manualRefreshUnchanged).replace(
             "{time}",
             doneText
           );
@@ -1645,7 +1949,16 @@
         if (autoRefreshInFlight) return;
         autoRefreshInFlight = true;
         try {
-          await fetchLatestBoardData();
+          try {
+            await fetchLatestBoardData();
+          } catch (error) {
+            console.error(error);
+          }
+          try {
+            await refreshLiveMarketData();
+          } catch (error) {
+            console.error(error);
+          }
         } catch (error) {
           console.error(error);
         } finally {
@@ -1662,7 +1975,7 @@
         }
       }, 1000);
       const autoRefreshMinutes = Math.max(1, Number(data.autoRefreshMinutes) || 60);
-      const autoRefreshMs = autoRefreshMinutes * 60 * 1000;
+      const autoRefreshMs = Math.min(autoRefreshMinutes * 60 * 1000, LIVE_MARKET_REFRESH_MS);
       runAutoRefreshTick();
       window.setInterval(() => {
         runAutoRefreshTick();
