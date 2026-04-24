@@ -36,47 +36,33 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Commit updated data
+      - name: Rebuild data (retry)
         run: |
+          set -e
+          for attempt in 1 2 3; do
+            if python build_data.py; then
+              echo "Build success on attempt $attempt"
+              exit 0
+            fi
+            echo "Build failed on attempt $attempt"
+            sleep 4
+          done
+          echo "Build failed after retries"
+          exit 1
+
+      - name: Publish latest data to auto-data branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p _auto_data
+          cp data.js board_snapshot.json _auto_data/
+          cd _auto_data
+          git init -q
+          git checkout -B auto-data
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          for attempt in 1 2 3 4 5; do
-            echo "Attempt $attempt: sync with origin/main"
-            git fetch origin main
-            git checkout -B main origin/main
-
-            echo "Attempt $attempt: rebuild data"
-            ok=0
-            for build_attempt in 1 2 3; do
-              if python build_data.py; then
-                ok=1
-                break
-              fi
-              echo "Build failed (attempt $build_attempt), retrying..."
-              sleep 4
-            done
-            if [ "$ok" -ne 1 ]; then
-              echo "Build failed after retries"
-              exit 1
-            fi
-
-            git add data.js board_snapshot.json
-            if git diff --cached --quiet; then
-              echo "No data changes"
-              exit 0
-            fi
-
-            git commit -m "chore: auto refresh data"
-            if git push origin HEAD:main; then
-              echo "Push success on attempt $attempt"
-              exit 0
-            fi
-
-            echo "Push rejected, retrying..."
-            git fetch origin main
-            git reset --hard origin/main
-            sleep 2
-          done
-
-          echo "Failed to push after 5 attempts"
-          exit 1
+          git add data.js board_snapshot.json
+          git commit -m "chore: auto refresh data"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin auto-data
