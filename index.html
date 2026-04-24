@@ -829,6 +829,7 @@
     const LIVE_MARKET_REFRESH_MS = 10 * 60 * 1000;
     const BOOT_REFRESH_THROTTLE_MS = 20 * 1000;
     const BOOT_REFRESH_LAST_KEY = "fdv_boot_refresh_last_v1";
+    const LAST_GOOD_DATA_KEY = "fdv_last_good_data_v1";
     const UPBIT_TICKER_BATCH_SIZE = 100;
 
     const TEXT = {
@@ -897,6 +898,30 @@
         viewMode: "market",
       };
 
+    function isValidBoardPayload(payload) {
+      return Boolean(payload && typeof payload === "object" && payload.boards && typeof payload.boards === "object");
+    }
+
+    function loadLastGoodData() {
+      try {
+        const raw = localStorage.getItem(LAST_GOOD_DATA_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return isValidBoardPayload(parsed) ? parsed : null;
+      } catch (_error) {
+        return null;
+      }
+    }
+
+    function saveLastGoodData(payload) {
+      if (!isValidBoardPayload(payload)) return;
+      try {
+        localStorage.setItem(LAST_GOOD_DATA_KEY, JSON.stringify(payload));
+      } catch (_error) {
+        // Ignore localStorage quota errors to keep runtime stable.
+      }
+    }
+
     const appShell = document.getElementById("appShell");
     let data = window.BOARD_DATA || {
       boards: { binance: [], upbit: [], bithumb: [] },
@@ -904,6 +929,16 @@
       notes: {},
       news: { items: [] },
     };
+    const cachedData = loadLastGoodData();
+    if (isValidBoardPayload(cachedData)) {
+      const cachedGeneratedAt = Number(cachedData.generatedAt) || 0;
+      const currentGeneratedAt = Number(data.generatedAt) || 0;
+      if (cachedGeneratedAt > currentGeneratedAt) {
+        data = cachedData;
+        window.BOARD_DATA = cachedData;
+      }
+    }
+    saveLastGoodData(data);
     const tabs = document.getElementById("tabs");
     const searchInput = document.getElementById("searchInput");
     const tableBody = document.getElementById("tableBody");
@@ -1581,6 +1616,7 @@
 
           if (changed > 0) {
             data.generatedAt = Math.floor(Date.now() / 1000);
+            saveLastGoodData(data);
             renderSummaryStats();
             renderAutoStatus();
             render();
@@ -1688,6 +1724,7 @@
 
         data = parsed;
         window.BOARD_DATA = parsed;
+        saveLastGoodData(parsed);
         renderSummaryStats();
         renderAutoStatus();
         render();
