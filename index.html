@@ -787,6 +787,7 @@
         <button class="tab active" data-board="binance" id="tabBinance"></button>
         <button class="tab" data-board="upbit" id="tabUpbit"></button>
         <button class="tab" data-board="bithumb" id="tabBithumb"></button>
+        <button class="tab" data-board="triple" id="tabTriple"></button>
       </div>
       <div class="compare-grid">
         <div class="field">
@@ -795,6 +796,7 @@
             <option value="binance"></option>
             <option value="upbit"></option>
             <option value="bithumb"></option>
+            <option value="triple"></option>
           </select>
         </div>
         <div class="compare-swap-wrap">
@@ -807,6 +809,7 @@
             <option value="binance"></option>
             <option value="upbit"></option>
             <option value="bithumb"></option>
+            <option value="triple"></option>
           </select>
         </div>
       </div>
@@ -885,6 +888,7 @@
         tabBinance: "\uBC14\uC774\uB0B8\uC2A4 USDT",
         tabUpbit: "\uC5C5\uBE44\uD2B8 KRW",
         tabBithumb: "\uBE57\uC378 KRW",
+        tabTriple: "3\uAC1C \uB3D9\uC2DC\uC0C1\uC7A5",
         compareBaseLabel: "\uAE30\uC900\uAC70\uB798\uC18C",
         compareTargetLabel: "\uBE44\uAD50\uAC70\uB798\uC18C",
         compareNone: "\uBE44\uAD50 \uC548 \uD568",
@@ -1133,16 +1137,19 @@
       document.getElementById("tabBinance").textContent = TEXT.tabBinance;
       document.getElementById("tabUpbit").textContent = TEXT.tabUpbit;
       document.getElementById("tabBithumb").textContent = TEXT.tabBithumb;
+      document.getElementById("tabTriple").textContent = TEXT.tabTriple;
       document.getElementById("compareBaseLabel").textContent = TEXT.compareBaseLabel;
       document.getElementById("compareTargetLabel").textContent = TEXT.compareTargetLabel;
       document.getElementById("compareNoneOption").textContent = TEXT.compareNone;
       newsToggleBtn.textContent = TEXT.newsOpen;
-      baseBoardSelect.options[0].textContent = TEXT.tabBinance;
-      baseBoardSelect.options[1].textContent = TEXT.tabUpbit;
-      baseBoardSelect.options[2].textContent = TEXT.tabBithumb;
-      compareBoardSelect.options[1].textContent = TEXT.tabBinance;
-      compareBoardSelect.options[2].textContent = TEXT.tabUpbit;
-      compareBoardSelect.options[3].textContent = TEXT.tabBithumb;
+      baseBoardSelect.querySelector('option[value="binance"]').textContent = TEXT.tabBinance;
+      baseBoardSelect.querySelector('option[value="upbit"]').textContent = TEXT.tabUpbit;
+      baseBoardSelect.querySelector('option[value="bithumb"]').textContent = TEXT.tabBithumb;
+      baseBoardSelect.querySelector('option[value="triple"]').textContent = TEXT.tabTriple;
+      compareBoardSelect.querySelector('option[value="binance"]').textContent = TEXT.tabBinance;
+      compareBoardSelect.querySelector('option[value="upbit"]').textContent = TEXT.tabUpbit;
+      compareBoardSelect.querySelector('option[value="bithumb"]').textContent = TEXT.tabBithumb;
+      compareBoardSelect.querySelector('option[value="triple"]').textContent = TEXT.tabTriple;
       compareSwapBtn.title = "\uAE30\uC900/\uBE44\uAD50 \uAC70\uB798\uC18C \uBC14\uAFB8\uAE30";
       baseBoardSelect.value = state.board;
       compareBoardSelect.value = state.compareBoard;
@@ -1297,6 +1304,7 @@
         upbit_fetch_failed: "\uC5C5\uBE44\uD2B8 \uC870\uD68C \uC2E4\uD328",
         bithumb_missing: "\uBE57\uC378 \uC2DC\uCD1D \uBBF8\uD655\uC778",
         bithumb_coinmarketcap: "\uBE57\uC378 CoinMarketCap",
+        triple_listed: "3\uAC1C \uAC70\uB798\uC18C \uB3D9\uC2DC\uC0C1\uC7A5",
       };
       return map[code] || code || "-";
     }
@@ -1317,6 +1325,7 @@
         binance_symbol_list: "Binance symbol list",
         zeta_same_symbol_fill: "ZETA same-symbol fill",
         bithumb_main_today_price: "Bithumb main today price",
+        listed_on_all_three: "Binance + Upbit + Bithumb",
       };
       return map[code] || code || "";
     }
@@ -1335,6 +1344,7 @@
           binance: TEXT.tabBinance,
           upbit: TEXT.tabUpbit,
           bithumb: TEXT.tabBithumb,
+          triple: TEXT.tabTriple,
         };
         return map[board] || board || "-";
       }
@@ -1842,8 +1852,36 @@
         render();
       }
 
+      function getBoardRows(board) {
+        if (board === "triple") {
+          const binanceRows = data.boards?.binance || [];
+          const upbitSymbols = new Set(
+            (data.boards?.upbit || []).map((item) => String(item.symbol || "").toUpperCase())
+          );
+          const bithumbSymbols = new Set(
+            (data.boards?.bithumb || []).map((item) => String(item.symbol || "").toUpperCase())
+          );
+
+          return binanceRows
+            .filter((row) => {
+              const symbol = String(row.symbol || "").toUpperCase();
+              return Boolean(symbol && upbitSymbols.has(symbol) && bithumbSymbols.has(symbol));
+            })
+            .map((row) => {
+              const symbol = String(row.symbol || "").toUpperCase();
+              return {
+                ...row,
+                pair: `${symbol}/USDT \u00B7 ${symbol}/KRW`,
+                capSource: "triple_listed",
+                capSourceDetail: "listed_on_all_three",
+              };
+            });
+        }
+        return data.boards?.[board] || [];
+      }
+
       function getCompareSymbolSet(board) {
-        const rows = data.boards[board] || [];
+        const rows = getBoardRows(board);
         return new Set(rows.map((item) => String(item.symbol || "").toUpperCase()));
       }
 
@@ -1866,7 +1904,7 @@
       }
 
         function getRows() {
-          const rows = data.boards[state.board] || [];
+          const rows = getBoardRows(state.board);
           const compareSymbols = state.compareBoard ? getCompareSymbolSet(state.compareBoard) : null;
           const query = state.query.trim().toLowerCase();
           const compared = state.compareBoard
@@ -1990,9 +2028,12 @@
           Number.isFinite(Number(row.circulatingSupply)) ||
           Number.isFinite(Number(row.totalSupply))
         ).length;
+        const totalLabel = state.board === "triple"
+          ? `3개 동시상장 ${formatNumber(rows.length, 0)}개`
+          : `총 ${formatNumber(rows.length, 0)}개`;
         statusText.textContent = state.compareBoard
           ? `\uACF5\uD1B5 \uC0C1\uC7A5 ${formatNumber(rows.length, 0)}\uAC1C | \uAE30\uC900 ${boardLabel(state.board)} | \uBE44\uAD50 ${boardLabel(state.compareBoard)} | \uC2DC\uCD1D \uD655\uC778 ${formatNumber(withCapCount, 0)}\uAC1C | \uAC00\uACA9 \uD655\uC778 ${formatNumber(withPriceCount, 0)}\uAC1C | \uC720\uD1B5 \uC815\uBCF4 \uD655\uC778 ${formatNumber(withSupplyCount, 0)}\uAC1C | ${state.page} / ${totalPages} \uD398\uC774\uC9C0`
-          : `\uCD1D ${formatNumber(rows.length, 0)}\uAC1C | \uC2DC\uCD1D \uD655\uC778 ${formatNumber(withCapCount, 0)}\uAC1C | \uAC00\uACA9 \uD655\uC778 ${formatNumber(withPriceCount, 0)}\uAC1C | \uC720\uD1B5 \uC815\uBCF4 \uD655\uC778 ${formatNumber(withSupplyCount, 0)}\uAC1C | ${state.page} / ${totalPages} \uD398\uC774\uC9C0`;
+          : `${totalLabel} | \uC2DC\uCD1D \uD655\uC778 ${formatNumber(withCapCount, 0)}\uAC1C | \uAC00\uACA9 \uD655\uC778 ${formatNumber(withPriceCount, 0)}\uAC1C | \uC720\uD1B5 \uC815\uBCF4 \uD655\uC778 ${formatNumber(withSupplyCount, 0)}\uAC1C | ${state.page} / ${totalPages} \uD398\uC774\uC9C0`;
 
         const generatedAt = data.generatedAt
           ? new Date(data.generatedAt * 1000).toLocaleString("ko-KR")
