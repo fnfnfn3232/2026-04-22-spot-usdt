@@ -827,6 +827,8 @@
     const MANUAL_REFRESH_COOLDOWN_MS = 30 * 1000;
     const REMOTE_DATA_URL = "https://raw.githubusercontent.com/fnfnfn3232/2026-04-22-spot-usdt/auto-data/data.js";
     const LIVE_MARKET_REFRESH_MS = 10 * 60 * 1000;
+    const BOOT_REFRESH_THROTTLE_MS = 20 * 1000;
+    const BOOT_REFRESH_LAST_KEY = "fdv_boot_refresh_last_v1";
     const UPBIT_TICKER_BATCH_SIZE = 100;
 
     const TEXT = {
@@ -1274,8 +1276,9 @@
 
       function renderAutoStatus() {
         const minutes = Number(data.autoRefreshMinutes) || 60;
+        const liveMinutes = Math.max(1, Math.floor(LIVE_MARKET_REFRESH_MS / (60 * 1000)));
         const suffix = location.protocol === "file:" ? ` · ${TEXT.fileModeSource}` : "";
-        autoUpdateStatus.textContent = `${TEXT.autoUpdateOn} · ${TEXT.autoUpdateEvery.replace("{minutes}", String(minutes))}${suffix}`;
+        autoUpdateStatus.textContent = `${TEXT.autoUpdateOn} · 서버 ${minutes}분 + 화면 ${liveMinutes}분 보정${suffix}`;
         lastUpdatedStatus.textContent = TEXT.lastUpdated.replace("{time}", formatDateTime(data.generatedAt));
         const fxRate = Number(data.fxUsdKrw);
         const fxRateText = Number.isFinite(fxRate) ? `${formatNumber(fxRate, 2)}원` : "-";
@@ -1290,6 +1293,15 @@
 
       function setManualRefreshLastTs(ts) {
         localStorage.setItem(MANUAL_REFRESH_LAST_KEY, String(Math.max(0, Math.floor(ts))));
+      }
+
+      function getBootRefreshLastTs() {
+        const raw = Number(localStorage.getItem(BOOT_REFRESH_LAST_KEY));
+        return Number.isFinite(raw) ? raw : 0;
+      }
+
+      function setBootRefreshLastTs(ts) {
+        localStorage.setItem(BOOT_REFRESH_LAST_KEY, String(Math.max(0, Math.floor(ts))));
       }
 
       function formatRemainingDuration(ms) {
@@ -1945,23 +1957,44 @@
       });
 
       let autoRefreshInFlight = false;
-      async function runAutoRefreshTick() {
+      let bootRefreshTimer = null;
+      async function runAutoRefreshTick(mode = "interval") {
         if (autoRefreshInFlight) return;
+        if (mode === "boot") {
+          const now = Date.now();
+          const remainMs = BOOT_REFRESH_THROTTLE_MS - (now - getBootRefreshLastTs());
+          if (remainMs > 0) {
+            if (bootRefreshTimer) {
+              window.clearTimeout(bootRefreshTimer);
+            }
+            bootRefreshTimer = window.setTimeout(() => {
+              bootRefreshTimer = null;
+              runAutoRefreshTick("boot-delayed");
+            }, remainMs);
+            return;
+          }
+        }
         autoRefreshInFlight = true;
+        let refreshed = false;
         try {
           try {
             await fetchLatestBoardData();
+            refreshed = true;
           } catch (error) {
             console.error(error);
           }
           try {
             await refreshLiveMarketData();
+            refreshed = true;
           } catch (error) {
             console.error(error);
           }
         } catch (error) {
           console.error(error);
         } finally {
+          if (refreshed && (mode === "boot" || mode === "boot-delayed")) {
+            setBootRefreshLastTs(Date.now());
+          }
           autoRefreshInFlight = false;
         }
       }
@@ -1976,9 +2009,9 @@
       }, 1000);
       const autoRefreshMinutes = Math.max(1, Number(data.autoRefreshMinutes) || 60);
       const autoRefreshMs = Math.min(autoRefreshMinutes * 60 * 1000, LIVE_MARKET_REFRESH_MS);
-      runAutoRefreshTick();
+      runAutoRefreshTick("boot");
       window.setInterval(() => {
-        runAutoRefreshTick();
+        runAutoRefreshTick("interval");
       }, autoRefreshMs);
       render();
     </script>
