@@ -1302,6 +1302,7 @@
       function fxSourceLabel(code) {
         const map = {
           upbit_krw_usdt: "업비트 KRW-USDT",
+          upbit_krw_usdt_live: "업비트 KRW-USDT",
           bithumb_usdt_krw: "빗썸 USDT/KRW",
           previous_payload: "이전값 유지",
           fallback_default: "기본값",
@@ -1456,6 +1457,37 @@
         return result;
       }
 
+      function recomputeAllRowsUsingCurrentFx() {
+        let touched = 0;
+        for (const boardName of ["binance", "upbit", "bithumb"]) {
+          const rows = data.boards?.[boardName] || [];
+          for (const row of rows) {
+            recomputeDerivedFields(row, { preferComputedCap: false });
+            touched += 1;
+          }
+          sortBoardRowsByCap(rows);
+        }
+        return touched;
+      }
+
+      async function refreshLiveFxRateFromUpbit() {
+        const payload = await fetchJsonNoCache("https://api.upbit.com/v1/ticker?markets=KRW-USDT");
+        if (!Array.isArray(payload) || !payload.length) {
+          return { changed: false };
+        }
+        const nextFx = toPositiveNumber(payload[0]?.trade_price);
+        if (nextFx === null) {
+          return { changed: false };
+        }
+
+        const prevFx = toPositiveNumber(data.fxUsdKrw);
+        data.fxUsdKrw = nextFx;
+        data.fxSource = "upbit_krw_usdt_live";
+        return {
+          changed: prevFx === null || Math.abs(prevFx - nextFx) >= 0.0001,
+        };
+      }
+
       async function refreshBinanceLiveRows() {
         const rows = data.boards?.binance || [];
         if (!rows.length) return 0;
@@ -1603,12 +1635,22 @@
         if (liveRefreshInFlight) return { changed: 0 };
         liveRefreshInFlight = true;
         try {
+          let changed = 0;
+          try {
+            const fxResult = await refreshLiveFxRateFromUpbit();
+            if (fxResult?.changed) {
+              changed += recomputeAllRowsUsingCurrentFx();
+            }
+          } catch (error) {
+            console.error(error);
+          }
+
           const tasks = await Promise.allSettled([
             refreshBinanceLiveRows(),
             refreshUpbitLiveRows(),
             refreshBithumbLiveRows(),
           ]);
-          const changed = tasks.reduce((sum, item) => {
+          changed += tasks.reduce((sum, item) => {
             if (item.status !== "fulfilled") return sum;
             const count = Number(item.value);
             return sum + (Number.isFinite(count) ? count : 0);
