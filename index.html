@@ -1878,10 +1878,9 @@
           Number.isFinite(Number(row.circulatingSupply)) ||
           Number.isFinite(Number(row.totalSupply))
         ).length;
-        const boardNoteText = noteLabel(data.notes[state.board]);
         statusText.textContent = state.compareBoard
-          ? `\uACF5\uD1B5 \uC0C1\uC7A5 ${formatNumber(rows.length, 0)}\uAC1C | \uAE30\uC900 ${boardLabel(state.board)} | \uBE44\uAD50 ${boardLabel(state.compareBoard)} | \uC2DC\uCD1D \uD655\uC778 ${formatNumber(withCapCount, 0)}\uAC1C | \uAC00\uACA9 \uD655\uC778 ${formatNumber(withPriceCount, 0)}\uAC1C | \uC720\uD1B5 \uC815\uBCF4 \uD655\uC778 ${formatNumber(withSupplyCount, 0)}\uAC1C | ${state.page} / ${totalPages} \uD398\uC774\uC9C0 | ${boardNoteText}`
-          : `\uCD1D ${formatNumber(rows.length, 0)}\uAC1C | \uC2DC\uCD1D \uD655\uC778 ${formatNumber(withCapCount, 0)}\uAC1C | \uAC00\uACA9 \uD655\uC778 ${formatNumber(withPriceCount, 0)}\uAC1C | \uC720\uD1B5 \uC815\uBCF4 \uD655\uC778 ${formatNumber(withSupplyCount, 0)}\uAC1C | ${state.page} / ${totalPages} \uD398\uC774\uC9C0 | ${boardNoteText}`;
+          ? `\uACF5\uD1B5 \uC0C1\uC7A5 ${formatNumber(rows.length, 0)}\uAC1C | \uAE30\uC900 ${boardLabel(state.board)} | \uBE44\uAD50 ${boardLabel(state.compareBoard)} | \uC2DC\uCD1D \uD655\uC778 ${formatNumber(withCapCount, 0)}\uAC1C | \uAC00\uACA9 \uD655\uC778 ${formatNumber(withPriceCount, 0)}\uAC1C | \uC720\uD1B5 \uC815\uBCF4 \uD655\uC778 ${formatNumber(withSupplyCount, 0)}\uAC1C | ${state.page} / ${totalPages} \uD398\uC774\uC9C0`
+          : `\uCD1D ${formatNumber(rows.length, 0)}\uAC1C | \uC2DC\uCD1D \uD655\uC778 ${formatNumber(withCapCount, 0)}\uAC1C | \uAC00\uACA9 \uD655\uC778 ${formatNumber(withPriceCount, 0)}\uAC1C | \uC720\uD1B5 \uC815\uBCF4 \uD655\uC778 ${formatNumber(withSupplyCount, 0)}\uAC1C | ${state.page} / ${totalPages} \uD398\uC774\uC9C0`;
 
         const generatedAt = data.generatedAt
           ? new Date(data.generatedAt * 1000).toLocaleString("ko-KR")
