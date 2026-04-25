@@ -1382,6 +1382,21 @@
         return map[board] || board || "-";
       }
 
+      function getComparableSymbol(row) {
+        const compareSymbol = String(row?.compareSymbol || "").toUpperCase();
+        if (compareSymbol) return compareSymbol;
+        return String(row?.symbol || "").toUpperCase();
+      }
+
+      function getDisplaySymbol(row) {
+        const symbol = String(row?.symbol || "").toUpperCase();
+        const aliasOf = String(row?.symbolAliasOf || "").toUpperCase();
+        if (aliasOf && aliasOf !== symbol) {
+          return `${symbol} (${aliasOf})`;
+        }
+        return symbol;
+      }
+
       function formatDateTime(timestampSeconds) {
         if (!Number.isFinite(timestampSeconds)) return "-";
         return new Date(timestampSeconds * 1000).toLocaleString("ko-KR");
@@ -1726,7 +1741,7 @@
         for (const boardName of ["binance", "upbit", "bithumb"]) {
           const map = new Map();
           for (const row of data.boards?.[boardName] || []) {
-            const symbol = String(row.symbol || "").toUpperCase();
+            const symbol = getComparableSymbol(row);
             if (!symbol || map.has(symbol)) continue;
             map.set(symbol, row);
           }
@@ -1735,7 +1750,7 @@
 
         let changed = 0;
         for (const row of rows) {
-          const symbol = String(row.symbol || "").toUpperCase();
+          const symbol = getComparableSymbol(row);
           if (!symbol) continue;
 
           let ref = null;
@@ -1989,18 +2004,18 @@
         if (board === "triple") {
           const binanceRows = data.boards?.binance || [];
           const upbitSymbols = new Set(
-            (data.boards?.upbit || []).map((item) => String(item.symbol || "").toUpperCase())
+            (data.boards?.upbit || []).map((item) => getComparableSymbol(item))
           );
           const bithumbSymbols = new Set(
-            (data.boards?.bithumb || []).map((item) => String(item.symbol || "").toUpperCase())
+            (data.boards?.bithumb || []).map((item) => getComparableSymbol(item))
           );
           const coinbaseSymbols = new Set(
-            (data.boards?.coinbase || []).map((item) => String(item.symbol || "").toUpperCase())
+            (data.boards?.coinbase || []).map((item) => getComparableSymbol(item))
           );
 
           return binanceRows
             .filter((row) => {
-              const symbol = String(row.symbol || "").toUpperCase();
+              const symbol = getComparableSymbol(row);
               return Boolean(
                 symbol &&
                 upbitSymbols.has(symbol) &&
@@ -2009,7 +2024,7 @@
               );
             })
             .map((row) => {
-              const symbol = String(row.symbol || "").toUpperCase();
+              const symbol = getComparableSymbol(row);
               return {
                 ...row,
                 pair: `${symbol}/USDT \u00B7 ${symbol}/KRW \u00B7 ${symbol}/USD`,
@@ -2023,7 +2038,7 @@
 
       function getCompareSymbolSet(board) {
         const rows = getBoardRows(board);
-        return new Set(rows.map((item) => String(item.symbol || "").toUpperCase()));
+        return new Set(rows.map((item) => getComparableSymbol(item)));
       }
 
       function getQueryPriority(row, query) {
@@ -2031,15 +2046,19 @@
         if (!q) return 999;
 
         const symbol = String(row.symbol || "").toLowerCase();
+        const compareSymbol = String(row.compareSymbol || "").toLowerCase();
         const pair = String(row.pair || "").toLowerCase();
         const name = String(row.name || "").toLowerCase();
         const englishName = String(row.englishName || "").toLowerCase();
         const koreanName = String(row.koreanName || "").toLowerCase();
 
         if (symbol === q) return 0;
+        if (compareSymbol && compareSymbol === q) return 1;
         if (pair === q || pair.startsWith(`${q}/`)) return 1;
         if (symbol.startsWith(q)) return 2;
+        if (compareSymbol && compareSymbol.startsWith(q)) return 2;
         if (symbol.includes(q)) return 3;
+        if (compareSymbol && compareSymbol.includes(q)) return 3;
         if (name.startsWith(q) || englishName.startsWith(q) || koreanName.startsWith(q)) return 4;
         return 5;
       }
@@ -2050,14 +2069,23 @@
           const query = state.query.trim().toLowerCase();
           const compared = state.compareBoard
             ? rows.filter((row) => {
-                return compareSymbols.has(String(row.symbol || "").toUpperCase());
+                return compareSymbols.has(getComparableSymbol(row));
               })
             : [...rows];
 
           const filtered = !query
             ? compared
             : compared.filter((row) => {
-                return [row.name, row.symbol, row.pair, row.englishName, row.koreanName, row.capSource]
+                return [
+                  row.name,
+                  row.symbol,
+                  row.compareSymbol,
+                  row.symbolAliasOf,
+                  row.pair,
+                  row.englishName,
+                  row.koreanName,
+                  row.capSource,
+                ]
                   .filter(Boolean)
                 .some((value) => String(value).toLowerCase().includes(query));
             });
@@ -2122,7 +2150,7 @@
                 <div class="coin-name">${row.name}</div>
                 <div class="coin-pair">${row.pair}</div>
               </td>
-              <td><span class="chip">${row.symbol}</span></td>
+              <td><span class="chip">${getDisplaySymbol(row)}</span></td>
               <td>
                 <div class="price-main">${price.main || TEXT.unknown}</div>
                 <div class="price-sub">${price.sub || TEXT.noPrice}</div>

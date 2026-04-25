@@ -35,6 +35,17 @@ UPBIT_PREFER_BITHUMB_FILL_SYMBOL_MAP = {
 BITHUMB_SUPPLY_PREFER_UPBIT_SYMBOL_MAP = {
     "ORDER": "ORDER",
 }
+COINBASE_COMPARE_SYMBOL_MAP = {
+    "COSMOSDYDX": "DYDX",
+    "BOBBOB": "BOB",
+    "BASED1": "BASED",
+    "MANTLE": "MNT",
+    "JUPITER": "JUP",
+    "JITOSOL": "JTO",
+}
+COINBASE_EXCLUDED_SYMBOLS = {
+    "ZETACHAIN",
+}
 SUSPICIOUS_DROP_MIN_RATIO = 0.90
 SUSPICIOUS_DROP_MIN_ABS = {
     "binance": 40,
@@ -996,16 +1007,22 @@ def fetch_coinbase() -> list[dict]:
             continue
         if not base_currency:
             continue
+        if base_currency in COINBASE_EXCLUDED_SYMBOLS:
+            continue
         if status != "online" or trading_disabled:
             continue
         if base_currency in seen_symbols:
             continue
         seen_symbols.add(base_currency)
+        compare_symbol = COINBASE_COMPARE_SYMBOL_MAP.get(base_currency, base_currency)
+        symbol_alias_of = compare_symbol if compare_symbol != base_currency else None
 
         rows.append(
             {
                 "symbol": base_currency,
                 "pair": f"{base_currency}/USD",
+                "compareSymbol": compare_symbol,
+                "symbolAliasOf": symbol_alias_of,
                 "name": base_currency,
                 "englishName": base_currency,
                 "koreanName": base_currency,
@@ -1024,7 +1041,7 @@ def fetch_coinbase() -> list[dict]:
                 "capSource": "coinbase_usd_list",
                 "capSourceDetail": "coinbase_exchange_markets",
                 "status": "missing",
-                "nameKeys": list(build_name_keys(base_currency, base_currency, base_currency)),
+                "nameKeys": list(build_name_keys(base_currency, base_currency, compare_symbol)),
             }
         )
     return rows
@@ -1051,7 +1068,7 @@ def apply_coinbase_reference_fills(
     bithumb_by_symbol = build_rows_by_symbol(bithumb_rows)
 
     for coinbase_row in coinbase_rows:
-        symbol = str(coinbase_row.get("symbol") or "").upper()
+        symbol = str(coinbase_row.get("compareSymbol") or coinbase_row.get("symbol") or "").upper()
         if not symbol:
             continue
 
