@@ -808,7 +808,6 @@
             <option value="upbit"></option>
             <option value="bithumb"></option>
             <option value="coinbase"></option>
-            <option value="triple"></option>
           </select>
         </div>
         <div class="compare-swap-wrap">
@@ -822,7 +821,6 @@
             <option value="upbit"></option>
             <option value="bithumb"></option>
             <option value="coinbase"></option>
-            <option value="triple"></option>
           </select>
         </div>
       </div>
@@ -903,7 +901,7 @@
         tabUpbit: "\uC5C5\uBE44\uD2B8 KRW",
         tabBithumb: "\uBE57\uC378 KRW",
         tabCoinbase: "\uCF54\uC778\uBCA0\uC774\uC2A4 USD",
-        tabTriple: "3\uAC1C \uB3D9\uC2DC\uC0C1\uC7A5",
+        tabTriple: "4\uAC1C \uB3D9\uC2DC\uC0C1\uC7A5",
         compareBaseLabel: "\uAE30\uC900\uAC70\uB798\uC18C",
         compareTargetLabel: "\uBE44\uAD50\uAC70\uB798\uC18C",
         compareNone: "\uBE44\uAD50 \uC548 \uD568",
@@ -1165,12 +1163,10 @@
       baseBoardSelect.querySelector('option[value="upbit"]').textContent = TEXT.tabUpbit;
       baseBoardSelect.querySelector('option[value="bithumb"]').textContent = TEXT.tabBithumb;
       baseBoardSelect.querySelector('option[value="coinbase"]').textContent = TEXT.tabCoinbase;
-      baseBoardSelect.querySelector('option[value="triple"]').textContent = TEXT.tabTriple;
       compareBoardSelect.querySelector('option[value="binance"]').textContent = TEXT.tabBinance;
       compareBoardSelect.querySelector('option[value="upbit"]').textContent = TEXT.tabUpbit;
       compareBoardSelect.querySelector('option[value="bithumb"]').textContent = TEXT.tabBithumb;
       compareBoardSelect.querySelector('option[value="coinbase"]').textContent = TEXT.tabCoinbase;
-      compareBoardSelect.querySelector('option[value="triple"]').textContent = TEXT.tabTriple;
       compareSwapBtn.title = "\uAE30\uC900/\uBE44\uAD50 \uAC70\uB798\uC18C \uBC14\uAFB8\uAE30";
       baseBoardSelect.value = state.board;
       compareBoardSelect.value = state.compareBoard;
@@ -1327,7 +1323,7 @@
         bithumb_coinmarketcap: "\uBE57\uC378 CoinMarketCap",
         coinbase_usd_list: "\uCF54\uC778\uBCA0\uC774\uC2A4 USD \uBAA9\uB85D",
         coinbase_fill_same_symbol: "\uCF54\uC778\uBCA0\uC774\uC2A4 \uB3D9\uC77C \uC2EC\uBCFC \uCC38\uC870",
-        triple_listed: "3\uAC1C \uAC70\uB798\uC18C \uB3D9\uC2DC\uC0C1\uC7A5",
+        quad_listed: "4\uAC1C \uAC70\uB798\uC18C \uB3D9\uC2DC\uC0C1\uC7A5",
       };
       return map[code] || code || "-";
     }
@@ -1360,7 +1356,7 @@
         bithumb_main_today_price: "Bithumb main today price",
         coinbase_exchange_markets: "Coinbase Exchange USD markets",
         upbit_info_tab_cmc_first: "Upbit info tab",
-        listed_on_all_three: "Binance + Upbit + Bithumb",
+        listed_on_all_four: "Binance + Upbit + Bithumb + Coinbase",
       };
       return map[code] || code || "";
     }
@@ -1998,19 +1994,27 @@
           const bithumbSymbols = new Set(
             (data.boards?.bithumb || []).map((item) => String(item.symbol || "").toUpperCase())
           );
+          const coinbaseSymbols = new Set(
+            (data.boards?.coinbase || []).map((item) => String(item.symbol || "").toUpperCase())
+          );
 
           return binanceRows
             .filter((row) => {
               const symbol = String(row.symbol || "").toUpperCase();
-              return Boolean(symbol && upbitSymbols.has(symbol) && bithumbSymbols.has(symbol));
+              return Boolean(
+                symbol &&
+                upbitSymbols.has(symbol) &&
+                bithumbSymbols.has(symbol) &&
+                coinbaseSymbols.has(symbol)
+              );
             })
             .map((row) => {
               const symbol = String(row.symbol || "").toUpperCase();
               return {
                 ...row,
-                pair: `${symbol}/USDT \u00B7 ${symbol}/KRW`,
-                capSource: "triple_listed",
-                capSourceDetail: "listed_on_all_three",
+                pair: `${symbol}/USDT \u00B7 ${symbol}/KRW \u00B7 ${symbol}/USD`,
+                capSource: "quad_listed",
+                capSourceDetail: "listed_on_all_four",
               };
             });
         }
@@ -2155,8 +2159,8 @@
           button.classList.toggle("active", button.dataset.board === state.board);
         });
 
-        baseBoardSelect.value = state.board;
-        compareBoardSelect.value = state.compareBoard;
+        baseBoardSelect.value = state.board === "triple" ? "binance" : state.board;
+        compareBoardSelect.value = state.compareBoard === "triple" ? "" : state.compareBoard;
         compareSwapBtn.disabled = !(state.compareBoard && state.compareBoard !== state.board);
 
         const withCapCount = rows.filter((row) => Number.isFinite(row.sortCapUsd)).length;
@@ -2166,7 +2170,7 @@
           Number.isFinite(Number(row.totalSupply))
         ).length;
         const totalLabel = state.board === "triple"
-          ? `3개 동시상장 ${formatNumber(rows.length, 0)}개`
+          ? `4개 동시상장 ${formatNumber(rows.length, 0)}개`
           : `총 ${formatNumber(rows.length, 0)}개`;
         statusText.textContent = state.compareBoard
           ? `\uACF5\uD1B5 \uC0C1\uC7A5 ${formatNumber(rows.length, 0)}\uAC1C | \uAE30\uC900 ${boardLabel(state.board)} | \uBE44\uAD50 ${boardLabel(state.compareBoard)} | \uC2DC\uCD1D \uD655\uC778 ${formatNumber(withCapCount, 0)}\uAC1C | \uAC00\uACA9 \uD655\uC778 ${formatNumber(withPriceCount, 0)}\uAC1C | \uC720\uD1B5 \uC815\uBCF4 \uD655\uC778 ${formatNumber(withSupplyCount, 0)}\uAC1C | ${state.page} / ${totalPages} \uD398\uC774\uC9C0`
