@@ -219,7 +219,7 @@
 
     .summary {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 12px;
       margin-top: 18px;
     }
@@ -702,7 +702,13 @@
       line-height: 1.7;
     }
 
-    @media (max-width: 900px) {
+    @media (max-width: 1200px) {
+        .summary {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 900px) {
         .summary {
           grid-template-columns: 1fr;
         }
@@ -763,11 +769,15 @@
             <div class="stat-label" id="statLabelUpbit"></div>
             <div class="stat-value" id="statUpbit">-</div>
           </article>
-            <article class="stat">
-              <div class="stat-label" id="statLabelBithumb"></div>
-              <div class="stat-value" id="statBithumb">-</div>
-            </article>
-          </div>
+          <article class="stat">
+            <div class="stat-label" id="statLabelBithumb"></div>
+            <div class="stat-value" id="statBithumb">-</div>
+          </article>
+          <article class="stat">
+            <div class="stat-label" id="statLabelCoinbase"></div>
+            <div class="stat-value" id="statCoinbase">-</div>
+          </article>
+        </div>
           <div class="auto-strip">
             <div class="auto-pill"><span class="auto-dot"></span><span id="autoUpdateStatus"></span></div>
             <div class="auto-pill" id="lastUpdatedStatus"></div>
@@ -787,6 +797,7 @@
         <button class="tab active" data-board="binance" id="tabBinance"></button>
         <button class="tab" data-board="upbit" id="tabUpbit"></button>
         <button class="tab" data-board="bithumb" id="tabBithumb"></button>
+        <button class="tab" data-board="coinbase" id="tabCoinbase"></button>
         <button class="tab" data-board="triple" id="tabTriple"></button>
       </div>
       <div class="compare-grid">
@@ -796,6 +807,7 @@
             <option value="binance"></option>
             <option value="upbit"></option>
             <option value="bithumb"></option>
+            <option value="coinbase"></option>
             <option value="triple"></option>
           </select>
         </div>
@@ -809,6 +821,7 @@
             <option value="binance"></option>
             <option value="upbit"></option>
             <option value="bithumb"></option>
+            <option value="coinbase"></option>
             <option value="triple"></option>
           </select>
         </div>
@@ -885,9 +898,11 @@
       statLabelBinance: "\uBC14\uC774\uB0B8\uC2A4 USDT",
       statLabelUpbit: "\uC5C5\uBE44\uD2B8 KRW",
       statLabelBithumb: "\uBE57\uC378 KRW",
+      statLabelCoinbase: "\uCF54\uC778\uBCA0\uC774\uC2A4 USD",
         tabBinance: "\uBC14\uC774\uB0B8\uC2A4 USDT",
         tabUpbit: "\uC5C5\uBE44\uD2B8 KRW",
         tabBithumb: "\uBE57\uC378 KRW",
+        tabCoinbase: "\uCF54\uC778\uBCA0\uC774\uC2A4 USD",
         tabTriple: "3\uAC1C \uB3D9\uC2DC\uC0C1\uC7A5",
         compareBaseLabel: "\uAE30\uC900\uAC70\uB798\uC18C",
         compareTargetLabel: "\uBE44\uAD50\uAC70\uB798\uC18C",
@@ -933,6 +948,7 @@
       binanceNote: "\uBC14\uC774\uB0B8\uC2A4 \uAC00\uACA9 \uD398\uC774\uC9C0\uC758 \uC2E4\uC81C \uC2DC\uCD1D",
       upbitNote: "\uC5C5\uBE44\uD2B8 \uC815\uBCF4 \uD0ED \uC2DC\uCD1D, CMC \uC6B0\uC120",
       bithumbNote: "\uBE57\uC378 \uBA54\uC778 \uC624\uB298\uC758 \uC2DC\uC138 \uC2DC\uCD1D(CoinMarketCap \uC81C\uACF5)",
+      coinbaseNote: "\uCF54\uC778\uBCA0\uC774\uC2A4 Exchange USD \uD398\uC5B4 \uBAA9\uB85D, \uB3D9\uC77C \uC2EC\uBCFC \uCC38\uC870 \uBCF4\uAC15",
     };
 
       const PAGE_SIZE = 100;
@@ -971,7 +987,7 @@
 
     const appShell = document.getElementById("appShell");
     let data = window.BOARD_DATA || {
-      boards: { binance: [], upbit: [], bithumb: [] },
+      boards: { binance: [], upbit: [], bithumb: [], coinbase: [] },
       stats: {},
       notes: {},
       news: { items: [] },
@@ -995,6 +1011,7 @@
       const statBinance = document.getElementById("statBinance");
       const statUpbit = document.getElementById("statUpbit");
       const statBithumb = document.getElementById("statBithumb");
+      const statCoinbase = document.getElementById("statCoinbase");
       const autoUpdateStatus = document.getElementById("autoUpdateStatus");
       const lastUpdatedStatus = document.getElementById("lastUpdatedStatus");
       const fxRateStatus = document.getElementById("fxRateStatus");
@@ -1134,9 +1151,11 @@
     document.getElementById("statLabelBinance").textContent = TEXT.statLabelBinance;
     document.getElementById("statLabelUpbit").textContent = TEXT.statLabelUpbit;
     document.getElementById("statLabelBithumb").textContent = TEXT.statLabelBithumb;
+    document.getElementById("statLabelCoinbase").textContent = TEXT.statLabelCoinbase;
       document.getElementById("tabBinance").textContent = TEXT.tabBinance;
       document.getElementById("tabUpbit").textContent = TEXT.tabUpbit;
       document.getElementById("tabBithumb").textContent = TEXT.tabBithumb;
+      document.getElementById("tabCoinbase").textContent = TEXT.tabCoinbase;
       document.getElementById("tabTriple").textContent = TEXT.tabTriple;
       document.getElementById("compareBaseLabel").textContent = TEXT.compareBaseLabel;
       document.getElementById("compareTargetLabel").textContent = TEXT.compareTargetLabel;
@@ -1145,10 +1164,12 @@
       baseBoardSelect.querySelector('option[value="binance"]').textContent = TEXT.tabBinance;
       baseBoardSelect.querySelector('option[value="upbit"]').textContent = TEXT.tabUpbit;
       baseBoardSelect.querySelector('option[value="bithumb"]').textContent = TEXT.tabBithumb;
+      baseBoardSelect.querySelector('option[value="coinbase"]').textContent = TEXT.tabCoinbase;
       baseBoardSelect.querySelector('option[value="triple"]').textContent = TEXT.tabTriple;
       compareBoardSelect.querySelector('option[value="binance"]').textContent = TEXT.tabBinance;
       compareBoardSelect.querySelector('option[value="upbit"]').textContent = TEXT.tabUpbit;
       compareBoardSelect.querySelector('option[value="bithumb"]').textContent = TEXT.tabBithumb;
+      compareBoardSelect.querySelector('option[value="coinbase"]').textContent = TEXT.tabCoinbase;
       compareBoardSelect.querySelector('option[value="triple"]').textContent = TEXT.tabTriple;
       compareSwapBtn.title = "\uAE30\uC900/\uBE44\uAD50 \uAC70\uB798\uC18C \uBC14\uAFB8\uAE30";
       baseBoardSelect.value = state.board;
@@ -1304,6 +1325,8 @@
         upbit_fetch_failed: "\uC5C5\uBE44\uD2B8 \uC870\uD68C \uC2E4\uD328",
         bithumb_missing: "\uBE57\uC378 \uC2DC\uCD1D \uBBF8\uD655\uC778",
         bithumb_coinmarketcap: "\uBE57\uC378 CoinMarketCap",
+        coinbase_usd_list: "\uCF54\uC778\uBCA0\uC774\uC2A4 USD \uBAA9\uB85D",
+        coinbase_fill_same_symbol: "\uCF54\uC778\uBCA0\uC774\uC2A4 \uB3D9\uC77C \uC2EC\uBCFC \uCC38\uC870",
         triple_listed: "3\uAC1C \uAC70\uB798\uC18C \uB3D9\uC2DC\uC0C1\uC7A5",
       };
       return map[code] || code || "-";
@@ -1321,10 +1344,22 @@
         const refText = refMap[refSourceRaw] || "타 거래소 참조";
         return `업비트 기준일 오래됨 (${baseDate}) · ${refText}`;
       }
+      if (String(code || "").startsWith("coinbase_exchange_markets|")) {
+        const refSourceRaw = String(code || "").split("|")[1] || "";
+        const refMap = {
+          binance_symbol_list: "바이낸스 참조",
+          upbit_info_tab_cmc_first: "업비트 참조",
+          bithumb_main_today_price: "빗썸 참조",
+        };
+        const refText = refMap[refSourceRaw] || "동일 심볼 참조";
+        return `Coinbase USD 목록 · ${refText}`;
+      }
       const map = {
         binance_symbol_list: "Binance symbol list",
         zeta_same_symbol_fill: "ZETA same-symbol fill",
         bithumb_main_today_price: "Bithumb main today price",
+        coinbase_exchange_markets: "Coinbase Exchange USD markets",
+        upbit_info_tab_cmc_first: "Upbit info tab",
         listed_on_all_three: "Binance + Upbit + Bithumb",
       };
       return map[code] || code || "";
@@ -1335,6 +1370,7 @@
           binance_exact_market_cap: TEXT.binanceNote,
           upbit_info_tab_cmc_first: TEXT.upbitNote,
           bithumb_main_coinmarketcap_feed: TEXT.bithumbNote,
+          coinbase_exchange_usd_pairs: TEXT.coinbaseNote,
         };
         return map[code] || TEXT.defaultDescription;
       }
@@ -1344,6 +1380,7 @@
           binance: TEXT.tabBinance,
           upbit: TEXT.tabUpbit,
           bithumb: TEXT.tabBithumb,
+          coinbase: TEXT.tabCoinbase,
           triple: TEXT.tabTriple,
         };
         return map[board] || board || "-";
@@ -1514,7 +1551,7 @@
 
       function recomputeAllRowsUsingCurrentFx() {
         let touched = 0;
-        for (const boardName of ["binance", "upbit", "bithumb"]) {
+        for (const boardName of ["binance", "upbit", "bithumb", "coinbase"]) {
           const rows = data.boards?.[boardName] || [];
           for (const row of rows) {
             recomputeDerivedFields(row, { preferComputedCap: false });
@@ -1685,6 +1722,104 @@
         return changed;
       }
 
+      async function refreshCoinbaseLiveRows() {
+        const rows = data.boards?.coinbase || [];
+        if (!rows.length) return 0;
+
+        const symbolMaps = [];
+        for (const boardName of ["binance", "upbit", "bithumb"]) {
+          const map = new Map();
+          for (const row of data.boards?.[boardName] || []) {
+            const symbol = String(row.symbol || "").toUpperCase();
+            if (!symbol || map.has(symbol)) continue;
+            map.set(symbol, row);
+          }
+          symbolMaps.push({ boardName, map });
+        }
+
+        let changed = 0;
+        for (const row of rows) {
+          const symbol = String(row.symbol || "").toUpperCase();
+          if (!symbol) continue;
+
+          let ref = null;
+          let refBoardName = "";
+          for (const source of symbolMaps) {
+            const hit = source.map.get(symbol);
+            if (hit) {
+              ref = hit;
+              refBoardName = source.boardName;
+              break;
+            }
+          }
+          if (!ref) continue;
+
+          const before = JSON.stringify([
+            row.marketCapUsd,
+            row.marketCapKrw,
+            row.priceUsd,
+            row.priceKrw,
+            row.circulatingSupply,
+            row.totalSupply,
+            row.fdvUsd,
+            row.fdvKrw,
+            row.circulatingRatio,
+          ]);
+
+          for (const key of [
+            "marketCapUsd",
+            "marketCapKrw",
+            "priceUsd",
+            "priceKrw",
+            "circulatingSupply",
+            "totalSupply",
+            "fdvUsd",
+            "fdvKrw",
+          ]) {
+            const value = toPositiveNumber(ref[key]);
+            if (value !== null) {
+              row[key] = value;
+            }
+          }
+
+          const ratioNumber = Number(ref.circulatingRatio);
+          if (Number.isFinite(ratioNumber) && ratioNumber >= 0) {
+            row.circulatingRatio = ratioNumber;
+          }
+
+          row.capSource = "coinbase_fill_same_symbol";
+          if (refBoardName === "binance") {
+            row.capSourceDetail = "coinbase_exchange_markets|binance_symbol_list";
+          } else if (refBoardName === "upbit") {
+            row.capSourceDetail = "coinbase_exchange_markets|upbit_info_tab_cmc_first";
+          } else {
+            row.capSourceDetail = "coinbase_exchange_markets|bithumb_main_today_price";
+          }
+          row.priceSource = ref.priceSource || row.priceSource;
+
+          recomputeDerivedFields(row, { preferComputedCap: false });
+          if (Number.isFinite(Number(row.marketCapUsd)) || Number.isFinite(Number(row.marketCapKrw))) {
+            row.status = "ok";
+          }
+
+          const after = JSON.stringify([
+            row.marketCapUsd,
+            row.marketCapKrw,
+            row.priceUsd,
+            row.priceKrw,
+            row.circulatingSupply,
+            row.totalSupply,
+            row.fdvUsd,
+            row.fdvKrw,
+            row.circulatingRatio,
+          ]);
+          if (before !== after) changed += 1;
+        }
+
+        sortBoardRowsByCap(rows);
+        return changed;
+      }
+
       let liveRefreshInFlight = false;
       async function refreshLiveMarketData() {
         if (liveRefreshInFlight) return { changed: 0 };
@@ -1704,6 +1839,7 @@
             refreshBinanceLiveRows(),
             refreshUpbitLiveRows(),
             refreshBithumbLiveRows(),
+            refreshCoinbaseLiveRows(),
           ]);
           changed += tasks.reduce((sum, item) => {
             if (item.status !== "fulfilled") return sum;
@@ -1775,6 +1911,7 @@
         statBinance.textContent = `${formatNumber(data.stats.binance?.total || 0, 0)} / ${formatNumber(data.stats.binance?.withCap || 0, 0)}`;
         statUpbit.textContent = `${formatNumber(data.stats.upbit?.total || 0, 0)} / ${formatNumber(data.stats.upbit?.withCap || 0, 0)}`;
         statBithumb.textContent = `${formatNumber(data.stats.bithumb?.total || 0, 0)} / ${formatNumber(data.stats.bithumb?.withCap || 0, 0)}`;
+        statCoinbase.textContent = `${formatNumber(data.stats.coinbase?.total || 0, 0)} / ${formatNumber(data.stats.coinbase?.withCap || 0, 0)}`;
       }
 
       function renderManualRefreshState() {

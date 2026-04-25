@@ -40,6 +40,7 @@ SUSPICIOUS_DROP_MIN_ABS = {
     "binance": 40,
     "upbit": 20,
     "bithumb": 30,
+    "coinbase": 30,
 }
 
 
@@ -975,6 +976,125 @@ def fetch_bithumb() -> list[dict]:
     return rows
 
 
+def fetch_coinbase() -> list[dict]:
+    payload = fetch_json("https://api.exchange.coinbase.com/products")
+    if not isinstance(payload, list):
+        return []
+
+    rows: list[dict] = []
+    seen_symbols: set[str] = set()
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+
+        quote_currency = str(item.get("quote_currency") or "").upper().strip()
+        base_currency = str(item.get("base_currency") or "").upper().strip()
+        status = str(item.get("status") or "").lower().strip()
+        trading_disabled = bool(item.get("trading_disabled"))
+
+        if quote_currency != "USD":
+            continue
+        if not base_currency:
+            continue
+        if status != "online" or trading_disabled:
+            continue
+        if base_currency in seen_symbols:
+            continue
+        seen_symbols.add(base_currency)
+
+        rows.append(
+            {
+                "symbol": base_currency,
+                "pair": f"{base_currency}/USD",
+                "name": base_currency,
+                "englishName": base_currency,
+                "koreanName": base_currency,
+                "marketCapUsd": None,
+                "marketCapKrw": None,
+                "priceUsd": None,
+                "priceKrw": None,
+                "priceSource": "coinbase_exchange_products",
+                "circulatingSupply": None,
+                "totalSupply": None,
+                "fdvUsd": None,
+                "fdvKrw": None,
+                "circulatingRatio": None,
+                "nativeCurrency": "USD",
+                "marketCapRank": None,
+                "capSource": "coinbase_usd_list",
+                "capSourceDetail": "coinbase_exchange_markets",
+                "status": "missing",
+                "nameKeys": list(build_name_keys(base_currency, base_currency, base_currency)),
+            }
+        )
+    return rows
+
+
+def pick_first_candidate_with_any_signal(candidate_rows: list[dict]) -> dict | None:
+    for candidate in candidate_rows:
+        has_market_cap = to_float(candidate.get("marketCapUsd")) is not None or to_float(candidate.get("marketCapKrw")) is not None
+        has_price = to_float(candidate.get("priceUsd")) is not None or to_float(candidate.get("priceKrw")) is not None
+        has_supply = to_float(candidate.get("circulatingSupply")) is not None or to_float(candidate.get("totalSupply")) is not None
+        if has_market_cap or has_price or has_supply:
+            return candidate
+    return None
+
+
+def apply_coinbase_reference_fills(
+    coinbase_rows: list[dict],
+    binance_rows: list[dict],
+    upbit_rows: list[dict],
+    bithumb_rows: list[dict],
+) -> None:
+    binance_by_symbol = build_rows_by_symbol(binance_rows)
+    upbit_by_symbol = build_rows_by_symbol(upbit_rows)
+    bithumb_by_symbol = build_rows_by_symbol(bithumb_rows)
+
+    for coinbase_row in coinbase_rows:
+        symbol = str(coinbase_row.get("symbol") or "").upper()
+        if not symbol:
+            continue
+
+        candidate = pick_first_candidate_with_any_signal(binance_by_symbol.get(symbol, []))
+        source_detail = "binance_symbol_list"
+
+        if candidate is None:
+            candidate = pick_first_candidate_with_any_signal(upbit_by_symbol.get(symbol, []))
+            source_detail = "upbit_info_tab_cmc_first"
+        if candidate is None:
+            candidate = pick_first_candidate_with_any_signal(bithumb_by_symbol.get(symbol, []))
+            source_detail = "bithumb_main_today_price"
+        if candidate is None:
+            continue
+
+        for key in (
+            "marketCapUsd",
+            "marketCapKrw",
+            "priceUsd",
+            "priceKrw",
+            "circulatingSupply",
+            "totalSupply",
+            "fdvUsd",
+            "fdvKrw",
+            "circulatingRatio",
+        ):
+            value = candidate.get(key)
+            if key == "circulatingRatio":
+                number = float(value) if isinstance(value, (int, float)) else None
+                if number is not None:
+                    coinbase_row[key] = number
+                continue
+            number = to_float(value)
+            if number is not None:
+                coinbase_row[key] = number
+
+        coinbase_row["capSource"] = "coinbase_fill_same_symbol"
+        coinbase_row["capSourceDetail"] = f"coinbase_exchange_markets|{source_detail}"
+        coinbase_row["priceSource"] = str(candidate.get("priceSource") or coinbase_row.get("priceSource") or "")
+        if to_float(coinbase_row.get("marketCapUsd")) is not None or to_float(coinbase_row.get("marketCapKrw")) is not None:
+            coinbase_row["status"] = "ok"
+
+
 def apply_upbit_targeted_fills(upbit_rows: list[dict], bithumb_rows: list[dict]) -> None:
     bithumb_by_symbol = {row.get("symbol"): row for row in bithumb_rows}
     for row in upbit_rows:
@@ -1332,15 +1452,34 @@ def make_payload(previous_payload: dict | None = None) -> dict:
         bithumb_rows = guard_rows
         refresh_issues["bithumb"] = f"fallback_previous_payload:{guard_reason}"
 
+    try:
+        coinbase_rows = fetch_coinbase()
+    except Exception as error:  # noqa: BLE001
+        cached_rows = clone_previous_board_rows(previous_payload, "coinbase")
+        if not cached_rows:
+            raise
+        coinbase_rows = normalize_previous_board_rows(
+            cached_rows,
+            board_name="coinbase",
+            error_text=str(error),
+        )
+        refresh_issues["coinbase"] = f"fallback_previous_payload:{error}"
+    guard_rows, guard_reason = apply_suspicious_drop_guard("coinbase", coinbase_rows, previous_payload)
+    if guard_reason:
+        coinbase_rows = guard_rows
+        refresh_issues["coinbase"] = f"fallback_previous_payload:{guard_reason}"
+
     news_payload = fetch_coinness_news((previous_payload or {}).get("news"))
     apply_upbit_live_fills(upbit_rows, binance_rows, bithumb_rows)
     apply_upbit_targeted_fills(upbit_rows, bithumb_rows)
     apply_bithumb_supply_fills(bithumb_rows, upbit_rows, binance_rows)
+    apply_coinbase_reference_fills(coinbase_rows, binance_rows, upbit_rows, bithumb_rows)
 
     boards = {
         "binance": finalize_rows(binance_rows),
         "upbit": finalize_rows(upbit_rows),
         "bithumb": finalize_rows(bithumb_rows),
+        "coinbase": finalize_rows(coinbase_rows),
     }
 
     stats = {}
@@ -1363,6 +1502,7 @@ def make_payload(previous_payload: dict | None = None) -> dict:
             "binance": "binance_exact_market_cap",
             "upbit": "upbit_info_tab_cmc_first",
             "bithumb": "bithumb_main_coinmarketcap_feed",
+            "coinbase": "coinbase_exchange_usd_pairs",
         },
         "refreshIssues": refresh_issues,
     }
@@ -1379,6 +1519,7 @@ def main() -> None:
         len(payload["boards"]["binance"]),
         len(payload["boards"]["upbit"]),
         len(payload["boards"]["bithumb"]),
+        len(payload["boards"]["coinbase"]),
     )
 
 
