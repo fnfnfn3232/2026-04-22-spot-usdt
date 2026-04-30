@@ -27,6 +27,7 @@ COINNESS_NEWS_ENDPOINT = "https://api.coinness.com/feed/v1/breaking-news"
 NEWS_RETENTION_DAYS = 7
 UPBIT_PREFER_BITHUMB_FILL_SYMBOL_MAP = {
     "1INCH": "1INCH",
+    "BLEND": "BLEND",
     "MIRA": "MIRA",
     "MET2": "MET",
     "ORDER": "ORDER",
@@ -1148,7 +1149,9 @@ def is_upbit_base_date_stale(value: str | None, *, max_age_days: int = 2) -> boo
     now_kst = datetime.now(timezone(timedelta(hours=9))).date()
     base_date = base_dt.date()
     age_days = (now_kst - base_date).days
-    return age_days > max_age_days
+    # Treat the threshold day as stale as well (>=) so 2-day-old upbit base data
+    # can be refreshed from live exchange references.
+    return age_days >= max_age_days
 
 
 def has_name_key_overlap(row_a: dict, row_b: dict) -> bool:
@@ -1299,14 +1302,15 @@ def apply_upbit_live_fills(
                     upbit_row["status"] = "ok"
                     continue
 
-        candidate = pick_live_fill_candidate(upbit_row, binance_by_symbol.get(symbol, []))
-        candidate_source = "upbit_fill_from_binance_live"
-        source_detail = "binance_symbol_list"
+        # For KRW upbit stale caps, prefer KRW bithumb live reference first.
+        candidate = pick_live_fill_candidate(upbit_row, bithumb_by_symbol.get(symbol, []))
+        candidate_source = "upbit_fill_from_bithumb_live"
+        source_detail = "bithumb_main_today_price"
 
         if candidate is None:
-            candidate = pick_live_fill_candidate(upbit_row, bithumb_by_symbol.get(symbol, []))
-            candidate_source = "upbit_fill_from_bithumb_live"
-            source_detail = "bithumb_main_today_price"
+            candidate = pick_live_fill_candidate(upbit_row, binance_by_symbol.get(symbol, []))
+            candidate_source = "upbit_fill_from_binance_live"
+            source_detail = "binance_symbol_list"
 
         if candidate is None:
             continue
