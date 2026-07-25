@@ -14,9 +14,9 @@
     :root {
       --bg: #ffffff;
       --panel: #ffffff;
-      --line: #d7e0e5;
-      --text: #17272f;
-      --muted: #657780;
+      --line: #cbd7dd;
+      --text: #10242d;
+      --muted: #526a75;
       --accent: #007da6;
       --chip: #eef4f6;
       --shadow: 0 20px 54px rgba(32, 55, 68, 0.12);
@@ -3586,6 +3586,12 @@
         color: var(--text);
       }
 
+      input::placeholder,
+      textarea::placeholder {
+        color: #7a8d96;
+        opacity: 1;
+      }
+
       .eyebrow,
       .tab.active,
       .page.active,
@@ -3679,6 +3685,37 @@
         color: #007da6;
       }
 
+      .free-board-tab {
+        border-color: #b8c8d0;
+        background: #ffffff;
+        color: #29434f;
+      }
+
+      .free-board-tab:hover {
+        border-color: #7f9ca9;
+        background: #f1f6f8;
+        color: #102f3c;
+      }
+
+      .free-board-list-page .free-board-tab {
+        border-color: #b8c8d0;
+        background: #ffffff;
+        color: #29434f;
+      }
+
+      .free-board-list-page .free-board-tab:hover {
+        border-color: #7f9ca9;
+        background: #f1f6f8;
+        color: #102f3c;
+      }
+
+      .free-board-tab.active,
+      .free-board-list-page .free-board-tab.active {
+        border-color: #3f51a8;
+        background: #4d5fb7;
+        color: #ffffff;
+      }
+
       .free-board-title-btn:hover,
       .free-board-text a:hover,
       .free-board-comment-body a:hover {
@@ -3732,6 +3769,34 @@
 
       .free-board-body {
         color: #2b3c44;
+      }
+
+      .free-board-table th {
+        color: #10242d;
+      }
+
+      .free-board-table td {
+        border-bottom-color: #dce4e8;
+        color: #263b45;
+        font-weight: 600;
+      }
+
+      .free-board-table td:nth-child(2) {
+        color: #244c5c;
+        font-weight: 750;
+      }
+
+      .free-board-title-cell .free-board-title-btn {
+        color: #10242d;
+        font-weight: 850;
+      }
+
+      .free-board-table-wrap {
+        border-bottom-color: #8393d6;
+      }
+
+      .free-board-list-page .free-board-board-nav {
+        border-bottom-color: #8393d6;
       }
 
       .free-board-attachment-name,
