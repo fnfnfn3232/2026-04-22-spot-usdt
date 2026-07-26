@@ -2213,6 +2213,14 @@ def finalize_rows(rows: list[dict]) -> list[dict]:
     return rows
 
 
+def ensure_listing_coverage(board_name: str, expected_pairs: set[str], rows: list[dict]) -> None:
+    actual_pairs = {str(row.get("pair") or "").strip() for row in rows}
+    missing_pairs = sorted(pair for pair in expected_pairs if pair and pair not in actual_pairs)
+    if missing_pairs:
+        preview = ", ".join(missing_pairs[:10])
+        raise RuntimeError(f"{board_name}_listing_rows_missing:{preview}")
+
+
 def serialize_change_row(row: dict) -> dict:
     return {
         "symbol": row.get("symbol"),
@@ -2565,12 +2573,20 @@ def make_payload(previous_payload: dict | None = None) -> dict:
     apply_implied_circulating_supply_fills("coinbase", coinbase_rows)
     apply_binance_korean_name_fills(binance_rows, upbit_rows, bithumb_rows)
 
+    expected_pairs = {
+        "binance": {str(row.get("pair") or "").strip() for row in binance_rows},
+        "upbit": {str(row.get("pair") or "").strip() for row in upbit_rows},
+        "bithumb": {str(row.get("pair") or "").strip() for row in bithumb_rows},
+        "coinbase": {str(row.get("pair") or "").strip() for row in coinbase_rows},
+    }
     boards = {
         "binance": finalize_rows(binance_rows),
         "upbit": finalize_rows(upbit_rows),
         "bithumb": finalize_rows(bithumb_rows),
         "coinbase": finalize_rows(coinbase_rows),
     }
+    for board_name, rows in boards.items():
+        ensure_listing_coverage(board_name, expected_pairs[board_name], rows)
     coin_info = build_coin_info(boards, previous_payload)
     for rows in boards.values():
         for row in rows:
