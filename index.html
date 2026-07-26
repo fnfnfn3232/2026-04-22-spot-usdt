@@ -9205,6 +9205,11 @@
             } else if (priceKrw !== null && fx !== null) {
               row.marketCapUsd = (priceKrw * circulatingSupply) / fx;
             }
+            if (priceKrw !== null) {
+              row.marketCapKrw = priceKrw * circulatingSupply;
+            } else if (priceUsd !== null && fx !== null) {
+              row.marketCapKrw = priceUsd * circulatingSupply * fx;
+            }
           }
           if (!Number.isFinite(Number(row.marketCapUsd)) && priceUsd !== null) {
             row.marketCapUsd = priceUsd * circulatingSupply;

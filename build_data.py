@@ -1134,11 +1134,31 @@ def fetch_upbit() -> tuple[list[dict], dict[str, list[dict]]]:
         price_usd = safe_div(price_krw, FX_USD_KRW)
         circulating_supply = to_float(detail.get("circulatingSupply"))
         total_supply = to_float(detail.get("totalSupply"))
+        market_cap_krw = to_float(detail.get("marketCapKrw"))
+        market_cap_usd = to_float(detail.get("marketCapUsd"))
+        cap_source = str(detail.get("capSource") or "")
+        cap_source_detail = str(detail.get("capSourceDetail") or "")
+        if (
+            price_krw is not None
+            and circulating_supply is not None
+            and (
+                market_cap_krw is None
+                or is_upbit_base_date_stale(cap_source_detail)
+            )
+        ):
+            stale_detail = cap_source_detail
+            market_cap_krw = price_krw * circulating_supply
+            market_cap_usd = safe_div(market_cap_krw, FX_USD_KRW)
+            cap_source = "upbit_live_price_supply"
+            cap_source_detail = (
+                f"upbit_krw_ticker|circulating_supply:{detail.get('supplyDetail') or 'unknown'}"
+                f"|replaced_stale:{stale_detail or 'missing'}"
+            )
         fdv_usd = compute_fdv_usd(
             fdv_usd=None,
             price_usd=price_usd,
             total_supply=total_supply,
-            market_cap_usd=to_float(detail.get("marketCapUsd")),
+            market_cap_usd=market_cap_usd,
             circulating_supply=circulating_supply,
         )
         fdv_krw = fdv_usd * FX_USD_KRW if fdv_usd is not None else None
@@ -1148,6 +1168,11 @@ def fetch_upbit() -> tuple[list[dict], dict[str, list[dict]]]:
             **detail,
             "compareSymbol": compare_symbol,
             "symbolAliasOf": symbol_alias_of,
+            "marketCapKrw": market_cap_krw,
+            "marketCapUsd": market_cap_usd,
+            "capSource": cap_source,
+            "capSourceDetail": cap_source_detail,
+            "status": "ok" if market_cap_krw is not None else "missing",
             "priceKrw": price_krw,
             "priceUsd": price_usd,
             "priceSource": "upbit_krw_ticker" if price_krw is not None else "upbit_price_missing",
