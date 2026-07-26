@@ -73,6 +73,7 @@ COINBASE_COINGECKO_ID_MAP = {
     "CGLD": "celo",
     "CORECHAIN": "coredaoorg",
     "FUN1": "football-fun",
+    "HONEY": "hivemapper",
     "IP": "story-2",
     "LIGHTER": "lighter",
     "PAX": "paxos-standard",
@@ -1335,6 +1336,23 @@ def fetch_coinbase() -> list[dict]:
         price_map = fetch_coinbase_usd_price_map()
     except Exception:  # noqa: BLE001
         price_map = {}
+    try:
+        currencies_payload = fetch_json(COINBASE_CURRENCIES_ENDPOINT, retries=2, pause=1.0)
+        currency_name_map = (
+            {
+                str(currency.get("id") or "").upper().strip(): str(
+                    currency.get("name") or ""
+                ).strip()
+                for currency in currencies_payload
+                if isinstance(currency, dict)
+                and str(currency.get("id") or "").strip()
+                and str(currency.get("name") or "").strip()
+            }
+            if isinstance(currencies_payload, list)
+            else {}
+        )
+    except Exception:  # noqa: BLE001
+        currency_name_map = {}
 
     products = payload
     if not isinstance(products, list):
@@ -1367,6 +1385,7 @@ def fetch_coinbase() -> list[dict]:
         price_usd = to_float(price_map.get(f"{base_currency}-USD"))
         price_krw = price_usd * FX_USD_KRW if price_usd is not None else None
         display_name = "Gensyn" if base_currency == GENSYN_SYMBOL else base_currency
+        currency_name = currency_name_map.get(base_currency, display_name)
 
         row = {
                 "symbol": base_currency,
@@ -1394,7 +1413,7 @@ def fetch_coinbase() -> list[dict]:
                 "nameKeys": list(
                     build_name_keys(
                         display_name,
-                        display_name,
+                        currency_name,
                         "젠신" if base_currency == GENSYN_SYMBOL else compare_symbol,
                     )
                 ),
@@ -1967,6 +1986,21 @@ def pick_largest_market_candidate(candidate_rows: list[dict]) -> dict | None:
     )
 
 
+def pick_name_matched_market_candidate(target_row: dict, candidate_rows: list[dict]) -> dict | None:
+    symbol_keys = {normalize_text(symbol) for symbol in row_symbols(target_row)}
+    target_name_keys = set(target_row.get("nameKeys") or []) - symbol_keys
+    if not target_name_keys:
+        return None
+
+    matched_candidates = [
+        candidate
+        for candidate in candidate_rows
+        if to_float(candidate.get("marketCapUsd")) is not None
+        and target_name_keys.intersection(set(candidate.get("nameKeys") or []))
+    ]
+    return pick_largest_market_candidate(matched_candidates)
+
+
 def apply_external_market_cap_fills(
     board_name: str,
     rows: list[dict],
@@ -1996,6 +2030,8 @@ def apply_external_market_cap_fills(
             ),
             None,
         )
+        if candidate is None:
+            candidate = pick_name_matched_market_candidate(row, candidate_rows)
         if candidate is None:
             candidate = pick_largest_market_candidate(candidate_rows)
         if candidate is None:
