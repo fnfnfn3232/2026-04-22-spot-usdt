@@ -1967,15 +1967,16 @@ def pick_largest_market_candidate(candidate_rows: list[dict]) -> dict | None:
     )
 
 
-def apply_coinbase_external_market_cap_fills(
-    coinbase_rows: list[dict],
+def apply_external_market_cap_fills(
+    board_name: str,
+    rows: list[dict],
     candidates_by_symbol: dict[str, list[dict]],
     *,
     cap_source: str,
     detail_prefix: str,
     preferred_source_ids: dict[str, str] | None = None,
 ) -> None:
-    for row in coinbase_rows:
+    for row in rows:
         if to_float(row.get("marketCapUsd")) is not None or to_float(row.get("marketCapKrw")) is not None:
             continue
 
@@ -2028,7 +2029,7 @@ def apply_coinbase_external_market_cap_fills(
             f"{detail_prefix}:{matched_symbol}:"
             f"{candidate.get('sourceId') or candidate.get('supplyDetail') or ''}"
         )
-        row["supplyDetail"] = f"coinbase_supply_fill:{candidate.get('supplyDetail') or ''}"
+        row["supplyDetail"] = f"{board_name}_supply_fill:{candidate.get('supplyDetail') or ''}"
         row["status"] = "ok"
 
 
@@ -2768,9 +2769,39 @@ def make_payload(previous_payload: dict | None = None) -> dict:
         apply_contract_total_supply_fills(board_name, rows, coinbase_contract_supply_candidates)
         apply_implied_circulating_supply_fills(board_name, rows)
 
+    apply_external_market_cap_fills(
+        "bithumb",
+        bithumb_rows,
+        coingecko_supply_candidates,
+        cap_source="bithumb_coingecko_market_cap",
+        detail_prefix="coingecko_market_cap",
+    )
+    bithumb_missing_cap_symbols = {
+        symbol
+        for row in bithumb_rows
+        if to_float(row.get("marketCapUsd")) is None
+        and to_float(row.get("marketCapKrw")) is None
+        for symbol in row_symbols(row)
+    }
+    if bithumb_missing_cap_symbols:
+        try:
+            coinmarketcap_candidates = fetch_coinmarketcap_market_candidates(
+                bithumb_missing_cap_symbols
+            )
+            apply_external_market_cap_fills(
+                "bithumb",
+                bithumb_rows,
+                coinmarketcap_candidates,
+                cap_source="bithumb_coinmarketcap_highest_market_cap",
+                detail_prefix="coinmarketcap_highest_market_cap",
+            )
+        except Exception as error:  # noqa: BLE001
+            refresh_issues["bithumb_coinmarketcap"] = f"fetch_failed:{error}"
+
     apply_coinbase_reference_fills(coinbase_rows, binance_rows, upbit_rows, bithumb_rows)
     apply_coingecko_supply_fills("coinbase", coinbase_rows, coingecko_supply_candidates)
-    apply_coinbase_external_market_cap_fills(
+    apply_external_market_cap_fills(
+        "coinbase",
         coinbase_rows,
         coingecko_supply_candidates,
         cap_source="coinbase_coingecko_market_cap",
@@ -2789,7 +2820,8 @@ def make_payload(previous_payload: dict | None = None) -> dict:
             coinmarketcap_candidates = fetch_coinmarketcap_market_candidates(
                 coinbase_missing_cap_symbols
             )
-            apply_coinbase_external_market_cap_fills(
+            apply_external_market_cap_fills(
+                "coinbase",
                 coinbase_rows,
                 coinmarketcap_candidates,
                 cap_source="coinbase_coinmarketcap_highest_market_cap",
