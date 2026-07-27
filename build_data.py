@@ -2963,6 +2963,9 @@ def build_listed_coin_index(boards: dict[str, list[dict]]) -> dict[str, dict]:
                     "name": "",
                     "englishName": "",
                     "exchanges": [],
+                    "marketCapUsd": 0.0,
+                    "marketCapKrw": 0.0,
+                    "marketCapRank": None,
                 },
             )
             if board_name not in entry["exchanges"]:
@@ -2979,6 +2982,33 @@ def build_listed_coin_index(boards: dict[str, list[dict]]) -> dict[str, dict]:
                     row.get("englishName"),
                     row.get("name"),
                     symbol,
+                )
+            candidate_market_cap_usd = to_float(
+                row.get("marketCapUsd") or row.get("sortCapUsd")
+            )
+            candidate_market_cap_krw = to_float(row.get("marketCapKrw"))
+            candidate_market_cap_rank = to_float(row.get("marketCapRank"))
+            if candidate_market_cap_rank is not None and candidate_market_cap_rank <= 0:
+                candidate_market_cap_rank = None
+            current_market_cap_usd = to_float(entry.get("marketCapUsd")) or 0.0
+            should_replace_market_cap = (
+                candidate_market_cap_usd is not None
+                and candidate_market_cap_usd > 0
+                and (
+                    current_market_cap_usd <= 0
+                    or (
+                        entry.get("marketCapRank") is None
+                        and candidate_market_cap_rank is not None
+                    )
+                )
+            )
+            if should_replace_market_cap:
+                entry["marketCapUsd"] = candidate_market_cap_usd
+                entry["marketCapKrw"] = candidate_market_cap_krw or 0.0
+                entry["marketCapRank"] = (
+                    int(candidate_market_cap_rank)
+                    if candidate_market_cap_rank is not None
+                    else None
                 )
     return listed
 
@@ -3024,6 +3054,9 @@ def make_defillama_ranking_row(
         "change1d": to_float(metric_source.get("change_1d")),
         "chains": [str(chain) for chain in chains[:6] if str(chain).strip()],
         "exchanges": list(listed_coin.get("exchanges") or []),
+        "marketCapUsd": to_float(listed_coin.get("marketCapUsd")) or 0.0,
+        "marketCapKrw": to_float(listed_coin.get("marketCapKrw")) or 0.0,
+        "marketCapRank": listed_coin.get("marketCapRank"),
         "slug": slug,
     }
     if slug:

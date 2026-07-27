@@ -1227,6 +1227,20 @@
         text-underline-offset: 4px;
       }
 
+      .ranking-coin-heading {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 5px 9px;
+      }
+
+      .ranking-market-cap {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
       .ranking-symbol,
       .ranking-protocol,
       .ranking-change,
@@ -7702,6 +7716,15 @@
                       const changeClass = Number.isFinite(change) ? (change > 0 ? " up" : change < 0 ? " down" : "") : "";
                       const rowUrl = isSafeHttpUrl(row.url) ? row.url : sourceUrl;
                       const exchanges = Array.isArray(row.exchanges) ? row.exchanges : [];
+                      const marketCapUsd = Number(row.marketCapUsd);
+                      const marketCapKrw = Number(row.marketCapKrw);
+                      const marketCapRank = Math.max(0, Math.floor(Number(row.marketCapRank) || 0));
+                      const marketCapText = Number.isFinite(marketCapKrw) && marketCapKrw > 0
+                        ? formatKrwShort(marketCapKrw)
+                        : (Number.isFinite(marketCapUsd) && marketCapUsd > 0 ? formatUsdShort(marketCapUsd) : "");
+                      const marketCapDetail = marketCapText
+                        ? `시총 ${marketCapText}${marketCapRank ? ` (${formatNumber(marketCapRank, 0)}위)` : ""}`
+                        : "";
                       const context = [
                         row.category,
                         ...(Array.isArray(row.chains) ? row.chains : []),
@@ -7710,7 +7733,10 @@
                         <tr>
                           <td class="ranking-rank">${formatNumber(Number(row.rank) || 0, 0)}</td>
                           <td class="ranking-coin">
-                            <a class="ranking-coin-link" href="${escapeAttr(rowUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(row.name || row.symbol || "-")}</a>
+                            <div class="ranking-coin-heading">
+                              <a class="ranking-coin-link" href="${escapeAttr(rowUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(row.name || row.symbol || "-")}</a>
+                              ${marketCapDetail ? `<span class="ranking-market-cap">${escapeHtml(marketCapDetail)}</span>` : ""}
+                            </div>
                             <span class="ranking-symbol">${escapeHtml(row.symbol || "-")}</span>
                             <span class="ranking-protocol">${escapeHtml(row.protocol || "-")}</span>
                           </td>
