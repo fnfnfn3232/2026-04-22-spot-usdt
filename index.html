@@ -1205,6 +1205,31 @@
         font-weight: 900;
       }
 
+      .ranking-period-values {
+        display: grid;
+        gap: 4px;
+      }
+
+      .ranking-period-value {
+        display: grid;
+        grid-template-columns: 48px minmax(0, 1fr);
+        align-items: baseline;
+        gap: 7px;
+      }
+
+      .ranking-period-label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .ranking-period-number {
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 900;
+        white-space: nowrap;
+      }
+
       .ranking-listings {
         width: 25%;
       }
@@ -4608,7 +4633,7 @@
       perpOpenInterest: { label: "Perp DEX", metricLabel: "현재 미결제약정" },
       rwa: { label: "RWA", metricLabel: "현재 TVL" },
       fees: { label: "수수료", metricLabel: "24시간 수수료" },
-      dexVolume: { label: "DEX 거래량", metricLabel: "24시간 거래량" },
+      dexVolume: { label: "DEX 거래량", metricLabel: "기간별 거래량", showPeriodTotals: true },
     };
     const LOCK_TTL_MS = 24 * 60 * 60 * 1000;
     const LOCK_EXTEND_MAX = 3;
@@ -7714,6 +7739,25 @@
                       const value = Number(row.valueUsd);
                       const change = Number(row.change1d);
                       const changeClass = Number.isFinite(change) ? (change > 0 ? " up" : change < 0 ? " down" : "") : "";
+                      const periodTotals = config.showPeriodTotals
+                        ? [
+                            ["24시간", Number(row.total24hUsd ?? row.valueUsd)],
+                            ["7일", Number(row.total7dUsd)],
+                            ["30일", Number(row.total30dUsd)],
+                          ]
+                        : [];
+                      const periodTotalsMarkup = periodTotals.length
+                        ? `
+                          <div class="ranking-period-values">
+                            ${periodTotals.map(([label, total]) => `
+                              <div class="ranking-period-value">
+                                <span class="ranking-period-label">${escapeHtml(label)}</span>
+                                <span class="ranking-period-number">${Number.isFinite(total) && total >= 0 ? escapeHtml(formatUsdShort(total)) : "-"}</span>
+                              </div>
+                            `).join("")}
+                          </div>
+                        `
+                        : "";
                       const rowUrl = isSafeHttpUrl(row.url) ? row.url : sourceUrl;
                       const exchanges = Array.isArray(row.exchanges) ? row.exchanges : [];
                       const marketCapUsd = Number(row.marketCapUsd);
@@ -7741,8 +7785,8 @@
                             <span class="ranking-protocol">${escapeHtml(row.protocol || "-")}</span>
                           </td>
                           <td class="ranking-value">
-                            ${escapeHtml(formatUsdShort(value))}
-                            ${Number.isFinite(change) ? `<span class="ranking-change${changeClass}">24시간 ${escapeHtml(formatRankingChange(change))}</span>` : ""}
+                            ${periodTotalsMarkup || escapeHtml(formatUsdShort(value))}
+                            ${Number.isFinite(change) ? `<span class="ranking-change${changeClass}">${config.showPeriodTotals ? "전일 대비" : "24시간"} ${escapeHtml(formatRankingChange(change))}</span>` : ""}
                           </td>
                           <td class="ranking-listings">
                             <div class="ranking-exchanges">
