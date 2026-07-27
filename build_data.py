@@ -47,6 +47,14 @@ DEFILLAMA_OPEN_INTEREST_ENDPOINT = (
     "https://api.llama.fi/overview/open-interest"
     "?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true"
 )
+# DefiLlama uses the on-chain EDGE ticker for edgeX. Exchanges use EDGEX to
+# distinguish it from the already-listed Definitive token (also EDGE).
+DEFILLAMA_PROTOCOL_LISTED_SYMBOL_OVERRIDES = {
+    "edgex-bridge": "EDGEX",
+    "edgex-perps": "EDGEX",
+    "edgex-spot": "EDGEX",
+    "edgex-v2": "EDGEX",
+}
 ETHEREUM_RPC_ENDPOINT = "https://ethereum-rpc.publicnode.com"
 ERC20_DECIMALS_SELECTOR = "0x313ce567"
 ERC20_TOTAL_SUPPLY_SELECTOR = "0x18160ddd"
@@ -3014,6 +3022,11 @@ def build_listed_coin_index(boards: dict[str, list[dict]]) -> dict[str, dict]:
 
 
 def defillama_protocol_symbols(protocol: dict, listed_symbols: set[str]) -> list[str]:
+    protocol_slug = str(protocol.get("slug") or "").strip().casefold()
+    override_symbol = DEFILLAMA_PROTOCOL_LISTED_SYMBOL_OVERRIDES.get(protocol_slug)
+    if override_symbol:
+        return [override_symbol] if override_symbol in listed_symbols else []
+
     raw_symbol = str(protocol.get("symbol") or "").strip().upper()
     if not raw_symbol or raw_symbol == "-":
         return []
