@@ -87,12 +87,12 @@ SCHEDULED_DELISTINGS = {
         "AERGO": {
             "deadline": "2026-08-03",
             "detail": "거래지원 종료 2026.08.03 예정",
-            "url": "https://upbit.com/service_center/notice",
+            "url": "https://www.upbit.com/service_center/notice?id=1457543706",
         },
         "AQT": {
             "deadline": "2026-08-03",
             "detail": "거래지원 종료 2026.08.03 예정",
-            "url": "https://upbit.com/service_center/notice",
+            "url": "https://www.upbit.com/service_center/notice?id=1943837257",
         },
     },
     "bithumb": {
