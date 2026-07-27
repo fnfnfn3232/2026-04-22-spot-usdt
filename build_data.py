@@ -99,32 +99,32 @@ SCHEDULED_DELISTINGS = {
         "H": {
             "deadline": "2026-08-10",
             "detail": "거래지원 종료 2026.08.10 15:00 예정",
-            "url": "https://feed.bithumb.com/notice/1654015",
+            "url": "https://m-feed.bithumb.com/notice/1654015",
         },
         "GRACY": {
             "deadline": "2026-08-18",
             "detail": "거래지원 종료 2026.08.18 15:00 예정",
-            "url": "https://feed.bithumb.com/notice/1654098",
+            "url": "https://m-feed.bithumb.com/notice/1654098",
         },
         "SPURS": {
             "deadline": "2026-08-18",
             "detail": "거래지원 종료 2026.08.18 15:00 예정",
-            "url": "https://feed.bithumb.com/notice/1654098",
+            "url": "https://m-feed.bithumb.com/notice/1654098",
         },
         "ZTX": {
             "deadline": "2026-08-18",
             "detail": "거래지원 종료 2026.08.18 15:00 예정",
-            "url": "https://feed.bithumb.com/notice/1654098",
+            "url": "https://m-feed.bithumb.com/notice/1654098",
         },
         "WIKEN": {
             "deadline": "2026-08-18",
             "detail": "거래지원 종료 2026.08.18 15:00 예정",
-            "url": "https://feed.bithumb.com/notice/1654098",
+            "url": "https://m-feed.bithumb.com/notice/1654098",
         },
         "FITFI": {
             "deadline": "2026-08-18",
             "detail": "거래지원 종료 2026.08.18 15:00 예정",
-            "url": "https://feed.bithumb.com/notice/1654098",
+            "url": "https://m-feed.bithumb.com/notice/1654098",
         },
     },
     "coinbase": {
@@ -229,10 +229,11 @@ def fetch_binance_scheduled_delistings() -> dict[str, dict]:
         if deadline < today:
             continue
         article_code = str(article.get("code") or "").strip()
+        article_slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
         detail_url = (
-            f"https://www.binance.com/en/support/announcement/detail/{article_code}"
-            if article_code
-            else "https://www.binance.com/en/support/announcement"
+            f"https://www.binance.com/en/support/announcement/{article_slug}-{article_code}"
+            if article_code and article_slug
+            else ""
         )
         for symbol in re.findall(r"[A-Z0-9]+", match.group(1).upper()):
             scheduled[symbol] = {
