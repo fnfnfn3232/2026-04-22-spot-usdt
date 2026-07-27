@@ -2356,13 +2356,11 @@
       .free-board-media img[data-protected-board-media-src]:not([data-protected-board-media-loaded="1"]) {
         width: min(100%, 920px);
         min-height: 220px;
-        border: 1px solid rgba(151, 183, 198, 0.14);
-        border-radius: 12px;
-        background:
-          linear-gradient(90deg, rgba(255, 255, 255, 0.03), rgba(117, 221, 255, 0.09), rgba(255, 255, 255, 0.03)),
-          #020b10;
-        background-size: 220% 100%;
-        animation: protectedMediaPulse 1.1s ease-in-out infinite;
+        aspect-ratio: 16 / 10;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        opacity: 0;
       }
 
       .free-board-media img[data-protected-board-media-src]:not([data-protected-board-media-loaded="1"]) {
@@ -2373,16 +2371,10 @@
       .free-board-body img[data-protected-board-media-loaded="1"],
       .free-board-media img[data-protected-board-media-loaded="1"] {
         min-height: 0;
+        aspect-ratio: auto;
         animation: none;
-      }
-
-      @keyframes protectedMediaPulse {
-        0% {
-          background-position: 100% 0;
-        }
-        100% {
-          background-position: -100% 0;
-        }
+        opacity: 1;
+        transition: opacity 140ms ease-out;
       }
 
       .free-board-code {
@@ -4312,7 +4304,7 @@
       { value: "info", label: "정보" },
     ];
     const FREE_BOARD_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"]);
-    const BOARD_MEDIA_PLACEHOLDER_SRC = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+    const BOARD_MEDIA_PLACEHOLDER_SRC = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
     const GITHUB_PAGES_MONTHLY_SOFT_LIMIT_BYTES = 100 * 1024 * 1024 * 1024;
     const LIVE_NEWS_REFRESH_MS = 10 * 60 * 1000;
     const NEWS_PAGE_SIZE = 40;
@@ -4749,6 +4741,25 @@
 
       async function hydrateProtectedBoardMedia(root = document) {
         const scope = root instanceof Element || root instanceof Document ? root : document;
+        const waitForProtectedImageDecode = async (node) => {
+          if (!(node instanceof HTMLImageElement)) return;
+          if (typeof node.decode === "function") {
+            try {
+              await node.decode();
+              return;
+            } catch (_error) {
+              // Fall back to the load event on browsers that reject decode().
+            }
+          }
+          if (node.complete) {
+            if (node.naturalWidth > 0) return;
+            throw new Error("protected_board_image_decode_failed");
+          }
+          await new Promise((resolve, reject) => {
+            node.addEventListener("load", resolve, { once: true });
+            node.addEventListener("error", reject, { once: true });
+          });
+        };
         const loadProtectedMediaUrl = async (node, attrName, datasetPrefix, originalUrl, onLoaded) => {
           const mediaPath = getProtectedBoardMediaPath(originalUrl);
           const loadedKey = datasetPrefix + "Loaded";
@@ -4760,11 +4771,19 @@
           node.dataset[srcKey] = originalUrl;
           const cachedObjectUrl = protectedBoardMediaCache.get(mediaPath);
           if (cachedObjectUrl) {
-            node.dataset[objectUrlKey] = cachedObjectUrl;
-            node.setAttribute(attrName, cachedObjectUrl);
-            node.dataset[loadedKey] = "1";
-            delete node.dataset[errorKey];
-            if (typeof onLoaded === "function") onLoaded(node);
+            try {
+              node.dataset[objectUrlKey] = cachedObjectUrl;
+              node.setAttribute(attrName, cachedObjectUrl);
+              await waitForProtectedImageDecode(node);
+              node.dataset[loadedKey] = "1";
+              delete node.dataset[errorKey];
+              if (typeof onLoaded === "function") onLoaded(node);
+            } catch (error) {
+              console.error("cached protected board media decode failed", error);
+              protectedBoardMediaCache.delete(mediaPath);
+              node.dataset[errorKey] = "1";
+              node.setAttribute("title", "Failed to load attached media. Please refresh and try again.");
+            }
             return;
           }
           node.dataset[loadingKey] = "1";
@@ -4776,6 +4795,7 @@
             protectedBoardMediaCache.set(mediaPath, objectUrl);
             node.dataset[objectUrlKey] = objectUrl;
             node.setAttribute(attrName, objectUrl);
+            await waitForProtectedImageDecode(node);
             node.dataset[loadedKey] = "1";
             delete node.dataset[errorKey];
             if (typeof onLoaded === "function") onLoaded(node);
