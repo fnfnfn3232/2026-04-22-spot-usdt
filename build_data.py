@@ -7,7 +7,7 @@ import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -81,6 +81,63 @@ COINBASE_COINGECKO_ID_MAP = {
 COINBASE_EXCLUDED_SYMBOLS = {
     "ZETACHAIN",
 }
+SEOUL_TIMEZONE = timezone(timedelta(hours=9))
+SCHEDULED_DELISTINGS = {
+    "upbit": {
+        "AERGO": {
+            "deadline": "2026-08-03",
+            "detail": "거래지원 종료 2026.08.03 예정",
+            "url": "https://upbit.com/service_center/notice",
+        },
+        "AQT": {
+            "deadline": "2026-08-03",
+            "detail": "거래지원 종료 2026.08.03 예정",
+            "url": "https://upbit.com/service_center/notice",
+        },
+    },
+    "bithumb": {
+        "H": {
+            "deadline": "2026-08-10",
+            "detail": "거래지원 종료 2026.08.10 15:00 예정",
+            "url": "https://feed.bithumb.com/notice/1654015",
+        },
+        "GRACY": {
+            "deadline": "2026-08-18",
+            "detail": "거래지원 종료 2026.08.18 15:00 예정",
+            "url": "https://feed.bithumb.com/notice/1654098",
+        },
+        "SPURS": {
+            "deadline": "2026-08-18",
+            "detail": "거래지원 종료 2026.08.18 15:00 예정",
+            "url": "https://feed.bithumb.com/notice/1654098",
+        },
+        "ZTX": {
+            "deadline": "2026-08-18",
+            "detail": "거래지원 종료 2026.08.18 15:00 예정",
+            "url": "https://feed.bithumb.com/notice/1654098",
+        },
+        "WIKEN": {
+            "deadline": "2026-08-18",
+            "detail": "거래지원 종료 2026.08.18 15:00 예정",
+            "url": "https://feed.bithumb.com/notice/1654098",
+        },
+        "FITFI": {
+            "deadline": "2026-08-18",
+            "detail": "거래지원 종료 2026.08.18 15:00 예정",
+            "url": "https://feed.bithumb.com/notice/1654098",
+        },
+    },
+    "coinbase": {
+        "ACX": {
+            "deadline": "2026-07-28",
+            "detail": "거래 종료 2026.07.28 예정",
+            "url": (
+                "https://help.coinbase.com/en/coinbase/trading-and-funding/"
+                "sending-or-receiving-cryptocurrency/token-migrations"
+            ),
+        },
+    },
+}
 AMBIGUOUS_SYMBOLS_REQUIRE_NAME_OVERLAP = {
     "AI",
 }
@@ -94,6 +151,95 @@ SUSPICIOUS_DROP_MIN_ABS = {
     "bithumb": 30,
     "coinbase": 30,
 }
+
+
+def make_risk_flag(
+    flag_type: str,
+    label: str,
+    detail: str,
+    source: str,
+    url: str = "",
+) -> dict:
+    flag = {
+        "type": flag_type,
+        "label": label,
+        "detail": detail,
+        "source": source,
+    }
+    if url:
+        flag["url"] = url
+    return flag
+
+
+def scheduled_delisting_flags(exchange: str, symbol: str) -> list[dict]:
+    entry = (
+        SCHEDULED_DELISTINGS.get(exchange, {})
+        .get(str(symbol or "").strip().upper())
+    )
+    if not entry:
+        return []
+    try:
+        deadline = date.fromisoformat(str(entry.get("deadline") or ""))
+    except ValueError:
+        return []
+    if datetime.now(SEOUL_TIMEZONE).date() > deadline:
+        return []
+    return [
+        make_risk_flag(
+            "delisting",
+            "상폐예정",
+            str(entry.get("detail") or "거래지원 종료 예정"),
+            f"{exchange}_official_notice",
+            str(entry.get("url") or ""),
+        )
+    ]
+
+
+def fetch_binance_scheduled_delistings() -> dict[str, dict]:
+    endpoint = (
+        "https://www.binance.com/bapi/composite/v1/public/cms/article/"
+        "catalog/list/query?catalogId=161&pageNo=1&pageSize=50"
+    )
+    payload = fetch_json(endpoint, retries=2, pause=0.5)
+    data = payload.get("data") if isinstance(payload, dict) else None
+    articles = data.get("articles") if isinstance(data, dict) else None
+    if not isinstance(articles, list):
+        return {}
+
+    today = datetime.now(SEOUL_TIMEZONE).date()
+    scheduled: dict[str, dict] = {}
+    pattern = re.compile(
+        r"^Binance Will Delist (.+?) on (\d{4}-\d{2}-\d{2})$",
+        re.IGNORECASE,
+    )
+    excluded_terms = ("futures", "margin", "loan", "leveraged token")
+    for article in articles:
+        if not isinstance(article, dict):
+            continue
+        title = str(article.get("title") or "").strip()
+        if any(term in title.lower() for term in excluded_terms):
+            continue
+        match = pattern.match(title)
+        if not match:
+            continue
+        try:
+            deadline = date.fromisoformat(match.group(2))
+        except ValueError:
+            continue
+        if deadline < today:
+            continue
+        article_code = str(article.get("code") or "").strip()
+        detail_url = (
+            f"https://www.binance.com/en/support/announcement/detail/{article_code}"
+            if article_code
+            else "https://www.binance.com/en/support/announcement"
+        )
+        for symbol in re.findall(r"[A-Z0-9]+", match.group(1).upper()):
+            scheduled[symbol] = {
+                "detail": f"현물 거래지원 종료 {deadline.isoformat()} 예정",
+                "url": detail_url,
+            }
+    return scheduled
 
 
 def normalize_text(value: str | None) -> str:
@@ -801,6 +947,10 @@ def is_binance_bstock(item: dict) -> bool:
 
 def fetch_binance() -> tuple[list[dict], dict[str, list[dict]]]:
     payload = fetch_json("https://www.binance.com/bapi/apex/v1/public/apex/marketing/symbol/list")
+    try:
+        scheduled_delistings = fetch_binance_scheduled_delistings()
+    except Exception:  # noqa: BLE001
+        scheduled_delistings = {}
     rows: list[dict] = []
     lookup: dict[str, list[dict]] = {}
     for item in payload.get("data", []):  # type: ignore[union-attr]
@@ -824,6 +974,29 @@ def fetch_binance() -> tuple[list[dict], dict[str, list[dict]]]:
         )
         fdv_krw = fdv_usd * FX_USD_KRW if fdv_usd is not None else None
         circulating_ratio = compute_circulating_ratio(circulating_supply, total_supply)
+        tags = [str(tag) for tag in (item.get("tags") or [])]
+        risk_flags = []
+        scheduled_delisting = scheduled_delistings.get(str(symbol).upper())
+        if scheduled_delisting:
+            risk_flags.append(
+                make_risk_flag(
+                    "delisting",
+                    "상폐예정",
+                    str(scheduled_delisting.get("detail") or "현물 거래지원 종료 예정"),
+                    "binance_official_announcement",
+                    str(scheduled_delisting.get("url") or ""),
+                )
+            )
+        if "Monitoring" in tags:
+            risk_flags.append(
+                make_risk_flag(
+                    "monitoring",
+                    "모니터링",
+                    "바이낸스 Monitoring Tag 지정 종목",
+                    "binance_symbol_tags",
+                    "https://www.binance.com/en/support/announcement",
+                )
+            )
         row = {
             "symbol": symbol,
             "pair": f"{symbol}/USDT",
@@ -845,6 +1018,7 @@ def fetch_binance() -> tuple[list[dict], dict[str, list[dict]]]:
             "capSource": "binance_exact",
             "capSourceDetail": "binance_symbol_list",
             "status": "ok" if market_cap_usd is not None else "missing",
+            "riskFlags": risk_flags,
             "nameKeys": list(
                 build_name_keys(
                     item.get("fullName") or symbol,
@@ -1092,6 +1266,18 @@ def fetch_upbit() -> tuple[list[dict], dict[str, list[dict]]]:
         if not market.startswith("KRW-"):
             continue
         symbol = market.replace("KRW-", "")
+        market_event = item.get("market_event") or {}
+        risk_flags = scheduled_delisting_flags("upbit", symbol)
+        if bool(market_event.get("warning")):
+            risk_flags.append(
+                make_risk_flag(
+                    "warning",
+                    "유의",
+                    "업비트 거래 유의 종목",
+                    "upbit_market_event",
+                    "https://upbit.com/service_center/notice",
+                )
+            )
         base_rows.append(
             {
                 "symbol": symbol,
@@ -1099,6 +1285,7 @@ def fetch_upbit() -> tuple[list[dict], dict[str, list[dict]]]:
                 "name": item.get("korean_name") or symbol,
                 "englishName": item.get("english_name") or symbol,
                 "koreanName": item.get("korean_name") or symbol,
+                "riskFlags": risk_flags,
             }
         )
 
@@ -1262,6 +1449,18 @@ def fetch_bithumb() -> list[dict]:
     data = payload.get("data") or {}  # type: ignore[union-attr]
     krw_market = (data.get("coinsOnMarketList") or {}).get("C0100") or []
     try:
+        market_details_payload = fetch_json("https://api.bithumb.com/v1/market/all?isDetails=true")
+        market_warning_by_symbol = {
+            str(detail.get("market") or "").replace("KRW-", "").upper(): str(
+                detail.get("market_warning") or ""
+            ).upper()
+            for detail in market_details_payload
+            if isinstance(detail, dict)
+            and str(detail.get("market") or "").startswith("KRW-")
+        }
+    except Exception:  # noqa: BLE001
+        market_warning_by_symbol = {}
+    try:
         bithumb_prices = fetch_bithumb_prices(
             [str(item.get("coinSymbol") or "") for item in krw_market if isinstance(item, dict)]
         )
@@ -1275,6 +1474,17 @@ def fetch_bithumb() -> list[dict]:
         coin_type = item.get("coinType") or ""
         market_cap_krw = cap_map.get(coin_type)
         symbol = str(item.get("coinSymbol") or "").upper()
+        risk_flags = scheduled_delisting_flags("bithumb", symbol)
+        if market_warning_by_symbol.get(symbol) == "CAUTION":
+            risk_flags.append(
+                make_risk_flag(
+                    "warning",
+                    "유의",
+                    "빗썸 거래 유의 종목",
+                    "bithumb_market_warning",
+                    "https://feed.bithumb.com/notice?category=5&page=1",
+                )
+            )
         price_krw = bithumb_prices.get(symbol)
         price_usd = safe_div(price_krw, FX_USD_KRW)
         basic_info = basic_info_by_coin_type.get(str(coin_type), {})
@@ -1321,6 +1531,7 @@ def fetch_bithumb() -> list[dict]:
                     else "bithumb_basic_info_missing"
                 ),
                 "status": "ok" if market_cap_krw is not None else "missing",
+                "riskFlags": risk_flags,
                 "info": collect_bithumb_coin_info(basic_info),
                 "nameKeys": list(
                     build_name_keys(
@@ -1411,6 +1622,7 @@ def fetch_coinbase() -> list[dict]:
         price_krw = price_usd * FX_USD_KRW if price_usd is not None else None
         display_name = "Gensyn" if base_currency == GENSYN_SYMBOL else base_currency
         currency_name = currency_name_map.get(base_currency, display_name)
+        risk_flags = scheduled_delisting_flags("coinbase", base_currency)
 
         row = {
                 "symbol": base_currency,
@@ -1435,6 +1647,7 @@ def fetch_coinbase() -> list[dict]:
                 "capSource": "coinbase_usd_list",
                 "capSourceDetail": "coinbase_exchange_markets",
                 "status": "missing",
+                "riskFlags": risk_flags,
                 "nameKeys": list(
                     build_name_keys(
                         display_name,

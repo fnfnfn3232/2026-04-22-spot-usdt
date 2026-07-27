@@ -2563,6 +2563,52 @@
       letter-spacing: -0.02em;
     }
 
+    .coin-title-line {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+
+    .asset-risk-badges {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .asset-risk-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 20px;
+      padding: 2px 6px;
+      border: 1px solid #c6a15c;
+      border-radius: 4px;
+      background: #fff7e8;
+      color: #714700;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.2;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .asset-risk-badge:hover {
+      filter: brightness(0.96);
+    }
+
+    .asset-risk-badge.delisting {
+      border-color: #e09a93;
+      background: #fff0ef;
+      color: #a6281e;
+    }
+
+    .asset-risk-badge.monitoring {
+      border-color: #c7a656;
+      background: #fff7dc;
+      color: #725200;
+    }
+
     .coin-info-trigger {
       appearance: none;
       display: inline-flex;
@@ -10396,11 +10442,29 @@
           const sourceDetailText = sourceDetailLabel(row.capSourceDetail);
           const coinSymbol = getComparableSymbol(row);
           const displayName = getDisplayName(row, state.board);
+          const riskFlags = Array.isArray(row.riskFlags) ? row.riskFlags : [];
+          const riskBadges = riskFlags.length
+            ? `<span class="asset-risk-badges">${riskFlags.map((flag) => {
+                const type = ["warning", "monitoring", "delisting"].includes(String(flag?.type || ""))
+                  ? String(flag.type)
+                  : "warning";
+                const label = String(flag?.label || "유의");
+                const detail = String(flag?.detail || label);
+                const url = String(flag?.url || "");
+                const content = escapeHtml(label);
+                return url && /^https?:\/\//i.test(url)
+                  ? `<a class="asset-risk-badge ${escapeAttr(type)}" href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer" title="${escapeAttr(detail)}">${content}</a>`
+                  : `<span class="asset-risk-badge ${escapeAttr(type)}" title="${escapeAttr(detail)}">${content}</span>`;
+              }).join("")}</span>`
+            : "";
           return `
             <tr>
               <td class="rank" data-label="${TEXT.thRank}">${rank}</td>
               <td data-label="${TEXT.thCoin}">
-                <button class="coin-name coin-info-trigger" type="button" data-coin-info-symbol="${escapeAttr(coinSymbol)}" aria-label="${escapeAttr(`${displayName} 코인 정보 보기`)}">${escapeHtml(displayName)}</button>
+                <div class="coin-title-line">
+                  <button class="coin-name coin-info-trigger" type="button" data-coin-info-symbol="${escapeAttr(coinSymbol)}" aria-label="${escapeAttr(`${displayName} 코인 정보 보기`)}">${escapeHtml(displayName)}</button>
+                  ${riskBadges}
+                </div>
                 <div class="coin-pair">${escapeHtml(row.pair)}</div>
               </td>
               <td data-label="${TEXT.thSymbol}"><span class="chip">${escapeHtml(getDisplaySymbol(row))}</span></td>
