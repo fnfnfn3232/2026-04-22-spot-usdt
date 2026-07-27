@@ -872,17 +872,20 @@
       }
 
       .shell.news-mode .news-host,
-      .shell.board-mode .news-host {
+      .shell.board-mode .news-host,
+      .shell.ranking-mode .news-host {
         display: block;
       }
 
       .shell.news-mode .market-only,
-      .shell.board-mode .market-only {
+      .shell.board-mode .market-only,
+      .shell.ranking-mode .market-only {
         display: none !important;
       }
 
       .shell.news-mode .market-section,
-      .shell.board-mode .market-section {
+      .shell.board-mode .market-section,
+      .shell.ranking-mode .market-section {
         display: none;
       }
 
@@ -1084,6 +1087,194 @@
       .news-more-btn:disabled {
         opacity: 0.7;
         cursor: default;
+      }
+
+      .ranking-shell {
+        min-width: 0;
+      }
+
+      .ranking-tabs {
+        display: flex;
+        gap: 18px;
+        align-items: center;
+        overflow-x: auto;
+        border-bottom: 1px solid var(--line);
+        scrollbar-width: thin;
+      }
+
+      .ranking-tab {
+        flex: 0 0 auto;
+        min-height: 44px;
+        padding: 0 2px;
+        border: 0;
+        border-bottom: 3px solid transparent;
+        border-radius: 0;
+        background: transparent;
+        color: var(--muted);
+        font-size: 15px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .ranking-tab.active {
+        border-bottom-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .ranking-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 0 10px;
+      }
+
+      .ranking-search {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: min(520px, 100%);
+      }
+
+      .ranking-search input {
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+
+      .ranking-search button {
+        flex: 0 0 auto;
+      }
+
+      .ranking-meta,
+      .ranking-note {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .ranking-note {
+        padding: 0 0 12px;
+        line-height: 1.6;
+      }
+
+      .ranking-note a {
+        color: var(--accent);
+        font-weight: 800;
+        text-decoration: none;
+      }
+
+      .ranking-table-wrap {
+        overflow-x: auto;
+        border-top: 1px solid var(--line);
+      }
+
+      .ranking-table {
+        width: 100%;
+        min-width: 840px;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+
+      .ranking-table th,
+      .ranking-table td {
+        padding: 14px 12px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      .ranking-table th {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .ranking-rank {
+        width: 70px;
+        color: var(--muted);
+        font-weight: 800;
+      }
+
+      .ranking-coin {
+        width: 31%;
+      }
+
+      .ranking-value {
+        width: 19%;
+        color: var(--text);
+        font-size: 17px;
+        font-weight: 900;
+      }
+
+      .ranking-listings {
+        width: 25%;
+      }
+
+      .ranking-context {
+        width: 25%;
+      }
+
+      .ranking-coin-link {
+        display: inline;
+        color: var(--text);
+        font-size: 16px;
+        font-weight: 900;
+        text-decoration: none;
+      }
+
+      .ranking-coin-link:hover {
+        color: var(--accent);
+        text-decoration: underline;
+        text-underline-offset: 4px;
+      }
+
+      .ranking-symbol,
+      .ranking-protocol,
+      .ranking-change,
+      .ranking-context-text {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .ranking-change.up {
+        color: #087b54;
+      }
+
+      .ranking-change.down {
+        color: #b4232f;
+      }
+
+      .ranking-exchanges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+
+      .ranking-exchange {
+        display: inline-flex;
+        align-items: center;
+        min-height: 25px;
+        padding: 3px 7px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: var(--chip);
+        color: var(--text);
+        font-size: 11px;
+        font-weight: 750;
+      }
+
+      .ranking-empty {
+        padding: 42px 12px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      .ranking-more {
+        display: flex;
+        justify-content: center;
+        padding-top: 14px;
       }
 
       .free-board-shell {
@@ -3106,6 +3297,94 @@
           font-size: 21px;
         }
 
+        .view-switch {
+          gap: 10px;
+        }
+
+        .ranking-tabs {
+          gap: 14px;
+        }
+
+        .ranking-tab {
+          min-height: 42px;
+          font-size: 14px;
+        }
+
+        .ranking-toolbar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .ranking-search {
+          width: 100%;
+        }
+
+        .ranking-meta {
+          padding: 0 2px;
+        }
+
+        .ranking-table-wrap {
+          overflow: visible;
+          border-top: 0;
+        }
+
+        .ranking-table {
+          min-width: 0;
+          table-layout: auto;
+        }
+
+        .ranking-table thead {
+          display: none;
+        }
+
+        .ranking-table,
+        .ranking-table tbody,
+        .ranking-table tr,
+        .ranking-table td {
+          display: block;
+          width: 100%;
+        }
+
+        .ranking-table tr {
+          position: relative;
+          padding: 13px 4px 12px 40px;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .ranking-table td {
+          padding: 0;
+          border: 0;
+        }
+
+        .ranking-rank {
+          position: absolute;
+          top: 14px;
+          left: 4px;
+          width: 28px;
+          font-size: 13px;
+        }
+
+        .ranking-coin,
+        .ranking-value,
+        .ranking-listings,
+        .ranking-context {
+          width: auto;
+        }
+
+        .ranking-value {
+          margin-top: 9px;
+          font-size: 16px;
+        }
+
+        .ranking-listings,
+        .ranking-context {
+          margin-top: 8px;
+        }
+
+        .ranking-note {
+          font-size: 12px;
+        }
+
         .summary {
           gap: 8px;
           margin-top: 14px;
@@ -3948,6 +4227,7 @@
           <div class="view-switch">
             <button class="view-link" id="newsToggleBtn" type="button"></button>
             <button class="view-link" id="boardToggleBtn" type="button"></button>
+            <button class="view-link" id="rankingToggleBtn" type="button"></button>
           </div>
           <div class="auto-strip-slot title-status-slot market-only" id="titleStatusSlot"></div>
         </div>
@@ -4308,6 +4588,14 @@
     const GITHUB_PAGES_MONTHLY_SOFT_LIMIT_BYTES = 100 * 1024 * 1024 * 1024;
     const LIVE_NEWS_REFRESH_MS = 10 * 60 * 1000;
     const NEWS_PAGE_SIZE = 40;
+    const RANKING_PAGE_SIZE = 50;
+    const DEFILLAMA_RANKING_CATEGORIES = {
+      tvl: { label: "TVL", metricLabel: "현재 TVL" },
+      perpOpenInterest: { label: "Perp DEX", metricLabel: "현재 미결제약정" },
+      rwa: { label: "RWA", metricLabel: "현재 TVL" },
+      fees: { label: "수수료", metricLabel: "24시간 수수료" },
+      dexVolume: { label: "DEX 거래량", metricLabel: "24시간 거래량" },
+    };
     const LOCK_TTL_MS = 24 * 60 * 60 * 1000;
     const LOCK_EXTEND_MAX = 3;
     const MANUAL_REFRESH_COOLDOWN_MS = 30 * 1000;
@@ -4357,6 +4645,7 @@
         lastUpdated: "\uB9C8\uC9C0\uB9C9 \uB370\uC774\uD130 \uAC31\uC2E0: {time}",
         newsOpen: "\uB274\uC2A4",
         boardOpen: "\uAC8C\uC2DC\uD310",
+        rankingOpen: "\uB7AD\uD0B9",
         newsTitle: "",
         newsOpenLink: "\uC0C8 \uCC3D \uC5F4\uAE30",
         newsHint: "\uB274\uC2A4 \uD56D\uBAA9\uC740 \uC694\uC57D \uAE30\uC900\uC73C\uB85C \uD45C\uC2DC\uB429\uB2C8\uB2E4.",
@@ -4461,6 +4750,7 @@
         coinbase: { total: 0, withCap: 0 },
       },
       notes: {},
+      defillamaRankings: { generatedAt: 0, status: "unavailable", categories: {} },
       news: { source: "worker_protected", status: "protected", protected: true, items: [] },
     };
     const protectedBoardMediaCache = new Map();
@@ -4515,6 +4805,7 @@
       const titleHeading = document.getElementById("title");
       const newsToggleBtn = document.getElementById("newsToggleBtn");
       const boardToggleBtn = document.getElementById("boardToggleBtn");
+      const rankingToggleBtn = document.getElementById("rankingToggleBtn");
       const screenSettingsSaveBtn = document.getElementById("screenSettingsSaveBtn");
       const screenSettingsResetBtn = document.getElementById("screenSettingsResetBtn");
       const screenSettingsStatChecks = document.getElementById("screenSettingsStatChecks");
@@ -5194,6 +5485,9 @@
       let liveNewsLastUpdatedAtMs = 0;
       let liveNewsError = "";
       let newsSearchQuery = "";
+      let rankingCategory = "tvl";
+      let rankingQuery = "";
+      let rankingVisibleCount = RANKING_PAGE_SIZE;
       let adminServerPassword = "";
       let serverUsageStats = null;
       let serverUsageError = "";
@@ -7305,9 +7599,158 @@
         `;
       }
 
+      function rankingExchangeLabel(exchange) {
+        const labels = {
+          upbit: "업비트",
+          bithumb: "빗썸",
+          binance: "바이낸스",
+          coinbase: "코인베이스",
+        };
+        return labels[exchange] || boardLabel(exchange);
+      }
+
+      function formatRankingChange(value) {
+        const change = Number(value);
+        if (!Number.isFinite(change)) return "";
+        const prefix = change > 0 ? "+" : "";
+        return `${prefix}${formatNumber(change, 2)}%`;
+      }
+
+      function renderRankingPanel() {
+        const rankingData = data.defillamaRankings || {};
+        const categories = rankingData.categories || {};
+        if (!DEFILLAMA_RANKING_CATEGORIES[rankingCategory]) {
+          rankingCategory = "tvl";
+        }
+        const config = DEFILLAMA_RANKING_CATEGORIES[rankingCategory];
+        const allRows = Array.isArray(categories[rankingCategory])
+          ? categories[rankingCategory]
+          : [];
+        const normalizedQuery = rankingQuery.trim().toLocaleLowerCase("ko-KR");
+        const filteredRows = normalizedQuery
+          ? allRows.filter((row) => [
+              row.symbol,
+              row.name,
+              row.englishName,
+              row.protocol,
+              row.category,
+              ...(Array.isArray(row.chains) ? row.chains : []),
+              ...(Array.isArray(row.exchanges) ? row.exchanges.map(rankingExchangeLabel) : []),
+            ].some((value) => String(value || "").toLocaleLowerCase("ko-KR").includes(normalizedQuery)))
+          : allRows;
+        const visibleRows = filteredRows.slice(0, rankingVisibleCount);
+        const generatedAt = Math.max(0, Number(rankingData.generatedAt) || 0);
+        const generatedText = generatedAt
+          ? new Date(generatedAt * 1000).toLocaleString("ko-KR", {
+              timeZone: "Asia/Seoul",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+            })
+          : "";
+        const categoryTabs = Object.entries(DEFILLAMA_RANKING_CATEGORIES)
+          .map(([key, item]) => `
+            <button class="ranking-tab${key === rankingCategory ? " active" : ""}" type="button" data-ranking-category="${escapeAttr(key)}">
+              ${escapeHtml(item.label)}
+            </button>
+          `)
+          .join("");
+        const sourceUrl = isSafeHttpUrl(rankingData.sourceUrl)
+          ? rankingData.sourceUrl
+          : "https://defillama.com/";
+        const categoryNote = rankingCategory === "perpOpenInterest"
+          ? "Perp DEX 거래량 전용 API가 유료로 전환되어, 임의 거래량 대신 DefiLlama 무료 API의 현재 미결제약정을 표시합니다."
+          : "각 코인은 한 번만 표시하며, 같은 토큰의 여러 프로토콜 중 해당 지표가 가장 큰 프로토콜을 대표값으로 사용합니다.";
+
+        newsPanel.innerHTML = `
+          <div class="ranking-shell">
+            <nav class="ranking-tabs" aria-label="DefiLlama 랭킹 종류">
+              ${categoryTabs}
+            </nav>
+            <div class="ranking-toolbar">
+              <form class="ranking-search" id="rankingSearchForm">
+                <input name="rankingQuery" type="search" autocomplete="off" placeholder="코인·심볼·프로토콜 검색" value="${escapeAttr(rankingQuery)}" />
+                <button type="submit">검색</button>
+                ${rankingQuery ? `<button type="button" data-ranking-clear>초기화</button>` : ""}
+              </form>
+              <p class="ranking-meta">${escapeHtml(config.metricLabel)} · ${formatNumber(filteredRows.length, 0)}개${generatedText ? ` · ${escapeHtml(generatedText)} 기준` : ""}</p>
+            </div>
+            <p class="ranking-note">
+              업비트·빗썸·바이낸스·코인베이스 상장 심볼과 정확히 일치하는 코인만 표시합니다.
+              ${escapeHtml(categoryNote)}
+              <a href="${escapeAttr(sourceUrl)}" target="_blank" rel="noopener noreferrer">DefiLlama 원본</a>
+            </p>
+            ${visibleRows.length ? `
+              <div class="ranking-table-wrap">
+                <table class="ranking-table">
+                  <thead>
+                    <tr>
+                      <th class="ranking-rank">순위</th>
+                      <th class="ranking-coin">코인 / 프로토콜</th>
+                      <th class="ranking-value">${escapeHtml(config.metricLabel)}</th>
+                      <th class="ranking-listings">상장 거래소</th>
+                      <th class="ranking-context">분류 / 체인</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${visibleRows.map((row) => {
+                      const value = Number(row.valueUsd);
+                      const change = Number(row.change1d);
+                      const changeClass = Number.isFinite(change) ? (change > 0 ? " up" : change < 0 ? " down" : "") : "";
+                      const rowUrl = isSafeHttpUrl(row.url) ? row.url : sourceUrl;
+                      const exchanges = Array.isArray(row.exchanges) ? row.exchanges : [];
+                      const context = [
+                        row.category,
+                        ...(Array.isArray(row.chains) ? row.chains : []),
+                      ].filter(Boolean).join(" · ");
+                      return `
+                        <tr>
+                          <td class="ranking-rank">${formatNumber(Number(row.rank) || 0, 0)}</td>
+                          <td class="ranking-coin">
+                            <a class="ranking-coin-link" href="${escapeAttr(rowUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(row.name || row.symbol || "-")}</a>
+                            <span class="ranking-symbol">${escapeHtml(row.symbol || "-")}</span>
+                            <span class="ranking-protocol">${escapeHtml(row.protocol || "-")}</span>
+                          </td>
+                          <td class="ranking-value">
+                            ${escapeHtml(formatUsdShort(value))}
+                            ${Number.isFinite(change) ? `<span class="ranking-change${changeClass}">24시간 ${escapeHtml(formatRankingChange(change))}</span>` : ""}
+                          </td>
+                          <td class="ranking-listings">
+                            <div class="ranking-exchanges">
+                              ${exchanges.map((exchange) => `<span class="ranking-exchange">${escapeHtml(rankingExchangeLabel(exchange))}</span>`).join("")}
+                            </div>
+                          </td>
+                          <td class="ranking-context">
+                            <span class="ranking-context-text">${escapeHtml(context || "-")}</span>
+                          </td>
+                        </tr>
+                      `;
+                    }).join("")}
+                  </tbody>
+                </table>
+              </div>
+              ${visibleRows.length < filteredRows.length ? `
+                <div class="ranking-more">
+                  <button type="button" data-ranking-more>50개 더 보기</button>
+                </div>
+              ` : ""}
+            ` : `
+              <p class="ranking-empty">${generatedAt ? "조건에 맞는 랭킹 코인이 없습니다." : "랭킹 데이터를 준비 중입니다. 다음 자동 갱신 후 표시됩니다."}</p>
+            `}
+          </div>
+        `;
+      }
+
       function renderContentPanel() {
         if (state.viewMode === "board") {
           renderFreeBoard();
+          return;
+        }
+        if (state.viewMode === "ranking") {
+          renderRankingPanel();
           return;
         }
         renderNewsPanel();
@@ -8258,6 +8701,7 @@
       document.getElementById("compareNoneOption3").textContent = TEXT.compareNone;
       newsToggleBtn.textContent = TEXT.newsOpen;
       boardToggleBtn.textContent = TEXT.boardOpen;
+      rankingToggleBtn.textContent = TEXT.rankingOpen;
       baseBoardSelect.querySelector('option[value="binance"]').textContent = TEXT.tabBinance;
       baseBoardSelect.querySelector('option[value="upbit"]').textContent = TEXT.tabUpbit;
       baseBoardSelect.querySelector('option[value="bithumb"]').textContent = TEXT.tabBithumb;
@@ -10053,7 +10497,7 @@
       }
 
       function renderCurrentView() {
-        if (state.viewMode === "news" || state.viewMode === "board") {
+        if (state.viewMode === "news" || state.viewMode === "board" || state.viewMode === "ranking") {
           renderContentPanel();
           return;
         }
@@ -10174,6 +10618,8 @@
           freeBoardPage,
           freeBoardQuery,
           freeBoardFilter,
+          rankingCategory,
+          rankingQuery,
         };
       }
 
@@ -10223,20 +10669,28 @@
         freeBoardFilter = getFreeBoardCategories().some((item) => item.value === payload.freeBoardFilter)
           ? String(payload.freeBoardFilter)
           : "all";
+        rankingCategory = DEFILLAMA_RANKING_CATEGORIES[payload.rankingCategory]
+          ? String(payload.rankingCategory)
+          : "tvl";
+        rankingQuery = String(payload.rankingQuery || "").slice(0, 80);
+        rankingVisibleCount = RANKING_PAGE_SIZE;
         setViewMode(payload.viewMode, { writeHistory: false });
         isApplyingHistoryState = false;
         saveAppViewState();
       }
 
       function setViewMode(mode, options = {}) {
-        state.viewMode = mode === "news" || mode === "board" ? mode : "market";
+        state.viewMode = ["news", "board", "ranking"].includes(mode) ? mode : "market";
         const isNewsMode = state.viewMode === "news";
         const isBoardMode = state.viewMode === "board";
+        const isRankingMode = state.viewMode === "ranking";
         appShell.classList.toggle("news-mode", isNewsMode);
         appShell.classList.toggle("board-mode", isBoardMode);
+        appShell.classList.toggle("ranking-mode", isRankingMode);
         newsToggleBtn.classList.toggle("active", isNewsMode);
         boardToggleBtn.classList.toggle("active", isBoardMode);
-        if (isNewsMode || isBoardMode) {
+        rankingToggleBtn.classList.toggle("active", isRankingMode);
+        if (isNewsMode || isBoardMode || isRankingMode) {
           renderContentPanel();
         }
         if (isNewsMode) {
@@ -10639,7 +11093,26 @@
         render();
       });
 
+      newsPanel.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" || event.isComposing) return;
+        const rankingSearchInput = event.target.closest('#rankingSearchForm input[name="rankingQuery"]');
+        if (!rankingSearchInput) return;
+        event.preventDefault();
+        rankingSearchInput.form?.requestSubmit();
+      });
+
       newsPanel.addEventListener("submit", async (event) => {
+        const rankingSearchForm = event.target.closest("#rankingSearchForm");
+        if (rankingSearchForm) {
+          event.preventDefault();
+          const formData = new FormData(rankingSearchForm);
+          rankingQuery = String(formData.get("rankingQuery") || "").trim().slice(0, 80);
+          rankingVisibleCount = RANKING_PAGE_SIZE;
+          renderRankingPanel();
+          writeAppHistoryState(true);
+          return;
+        }
+
         const newsSearchForm = event.target.closest("#newsSearchForm");
         if (newsSearchForm) {
           event.preventDefault();
@@ -10962,6 +11435,32 @@
             }
             return;
           }
+        }
+
+        const rankingCategoryButton = clickTarget.closest("[data-ranking-category]");
+        if (rankingCategoryButton) {
+          const nextCategory = String(rankingCategoryButton.dataset.rankingCategory || "");
+          if (DEFILLAMA_RANKING_CATEGORIES[nextCategory]) {
+            rankingCategory = nextCategory;
+            rankingVisibleCount = RANKING_PAGE_SIZE;
+            renderRankingPanel();
+            writeAppHistoryState(true);
+          }
+          return;
+        }
+
+        if (clickTarget.closest("[data-ranking-clear]")) {
+          rankingQuery = "";
+          rankingVisibleCount = RANKING_PAGE_SIZE;
+          renderRankingPanel();
+          writeAppHistoryState(true);
+          return;
+        }
+
+        if (clickTarget.closest("[data-ranking-more]")) {
+          rankingVisibleCount += RANKING_PAGE_SIZE;
+          renderRankingPanel();
+          return;
         }
 
         if (clickTarget.closest("[data-news-clear]")) {
@@ -11426,6 +11925,11 @@
       boardToggleBtn.addEventListener("click", () => {
         resetFreeBoardToList();
         setViewMode("board");
+      });
+
+      rankingToggleBtn.addEventListener("click", () => {
+        rankingVisibleCount = RANKING_PAGE_SIZE;
+        setViewMode("ranking");
       });
 
       window.addEventListener("popstate", (event) => {

@@ -34,6 +34,19 @@ COINMARKETCAP_QUOTES_ENDPOINT = (
 )
 COINBASE_CURRENCIES_ENDPOINT = "https://api.exchange.coinbase.com/currencies"
 COINBASE_PRODUCT_STATS_ENDPOINT = "https://api.exchange.coinbase.com/products/stats"
+DEFILLAMA_PROTOCOLS_ENDPOINT = "https://api.llama.fi/protocols"
+DEFILLAMA_FEES_ENDPOINT = (
+    "https://api.llama.fi/overview/fees"
+    "?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true&dataType=dailyFees"
+)
+DEFILLAMA_DEX_VOLUME_ENDPOINT = (
+    "https://api.llama.fi/overview/dexs"
+    "?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true&dataType=dailyVolume"
+)
+DEFILLAMA_OPEN_INTEREST_ENDPOINT = (
+    "https://api.llama.fi/overview/open-interest"
+    "?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true"
+)
 ETHEREUM_RPC_ENDPOINT = "https://ethereum-rpc.publicnode.com"
 ERC20_DECIMALS_SELECTOR = "0x313ce567"
 ERC20_TOTAL_SUPPLY_SELECTOR = "0x18160ddd"
@@ -2931,6 +2944,238 @@ def build_coin_info(boards: dict[str, list[dict]], previous_payload: dict | None
     return dict(sorted(coin_info.items()))
 
 
+def build_listed_coin_index(boards: dict[str, list[dict]]) -> dict[str, dict]:
+    listed: dict[str, dict] = {}
+    for board_name in ("upbit", "bithumb", "binance", "coinbase"):
+        for row in boards.get(board_name, []):
+            symbol = str(
+                row.get("compareSymbol")
+                or row.get("symbolAliasOf")
+                or row.get("symbol")
+                or ""
+            ).strip().upper()
+            if not symbol:
+                continue
+            entry = listed.setdefault(
+                symbol,
+                {
+                    "symbol": symbol,
+                    "name": "",
+                    "englishName": "",
+                    "exchanges": [],
+                },
+            )
+            if board_name not in entry["exchanges"]:
+                entry["exchanges"].append(board_name)
+            if not entry["name"]:
+                entry["name"] = first_text(
+                    row.get("koreanName"),
+                    row.get("name"),
+                    row.get("englishName"),
+                    symbol,
+                )
+            if not entry["englishName"]:
+                entry["englishName"] = first_text(
+                    row.get("englishName"),
+                    row.get("name"),
+                    symbol,
+                )
+    return listed
+
+
+def defillama_protocol_symbols(protocol: dict, listed_symbols: set[str]) -> list[str]:
+    raw_symbol = str(protocol.get("symbol") or "").strip().upper()
+    if not raw_symbol or raw_symbol == "-":
+        return []
+    symbols: list[str] = []
+    for candidate in re.split(r"[,/|;\s]+", raw_symbol):
+        symbol = candidate.strip()
+        if symbol in listed_symbols and symbol not in symbols:
+            symbols.append(symbol)
+    return symbols
+
+
+def make_defillama_ranking_row(
+    symbol: str,
+    listed_coin: dict,
+    protocol: dict,
+    metric_source: dict,
+    metric_key: str,
+) -> dict:
+    slug = str(metric_source.get("slug") or protocol.get("slug") or "").strip()
+    chains = metric_source.get("chains") or protocol.get("chains") or []
+    if not isinstance(chains, list):
+        chains = []
+    row = {
+        "symbol": symbol,
+        "name": listed_coin.get("name") or symbol,
+        "englishName": listed_coin.get("englishName") or symbol,
+        "protocol": first_text(
+            metric_source.get("displayName"),
+            metric_source.get("name"),
+            protocol.get("name"),
+            symbol,
+        ),
+        "category": first_text(
+            metric_source.get("category"),
+            protocol.get("category"),
+        ),
+        "valueUsd": to_float(metric_source.get(metric_key)) or 0.0,
+        "change1d": to_float(metric_source.get("change_1d")),
+        "chains": [str(chain) for chain in chains[:6] if str(chain).strip()],
+        "exchanges": list(listed_coin.get("exchanges") or []),
+        "slug": slug,
+    }
+    if slug:
+        row["url"] = (
+            "https://defillama.com/protocol/"
+            f"{urllib.parse.quote(slug, safe='+-')}"
+        )
+    return row
+
+
+def build_defillama_category(
+    *,
+    listed: dict[str, dict],
+    protocols: list[dict],
+    metric_key: str,
+    metric_rows: list[dict] | None = None,
+    category: str | None = None,
+    excluded_categories: set[str] | None = None,
+) -> list[dict]:
+    listed_symbols = set(listed)
+    protocols_by_id = {
+        str(protocol.get("id")): protocol
+        for protocol in protocols
+        if isinstance(protocol, dict) and protocol.get("id") is not None
+    }
+    source_rows = metric_rows if metric_rows is not None else protocols
+    best_by_symbol: dict[str, dict] = {}
+    for metric_source in source_rows:
+        if not isinstance(metric_source, dict):
+            continue
+        protocol = (
+            protocols_by_id.get(str(metric_source.get("defillamaId")))
+            if metric_rows is not None
+            else metric_source
+        ) or {}
+        protocol_category = str(
+            protocol.get("category") or metric_source.get("category") or ""
+        ).strip()
+        if category and protocol_category.casefold() != category.casefold():
+            continue
+        if (
+            excluded_categories
+            and protocol_category.casefold() in excluded_categories
+        ):
+            continue
+        value_usd = to_float(metric_source.get(metric_key))
+        if value_usd is None or value_usd <= 0:
+            continue
+        for symbol in defillama_protocol_symbols(protocol, listed_symbols):
+            current = best_by_symbol.get(symbol)
+            if current and (to_float(current.get("valueUsd")) or 0) >= value_usd:
+                continue
+            best_by_symbol[symbol] = make_defillama_ranking_row(
+                symbol,
+                listed[symbol],
+                protocol,
+                metric_source,
+                metric_key,
+            )
+    rows = sorted(
+        best_by_symbol.values(),
+        key=lambda item: to_float(item.get("valueUsd")) or 0,
+        reverse=True,
+    )
+    for rank, row in enumerate(rows, start=1):
+        row["rank"] = rank
+    return rows
+
+
+def build_defillama_rankings(
+    boards: dict[str, list[dict]],
+    previous_payload: dict | None,
+    refresh_issues: dict[str, str],
+) -> dict:
+    previous = (previous_payload or {}).get("defillamaRankings")
+    previous = previous if isinstance(previous, dict) else {}
+    try:
+        protocols_payload = fetch_json(DEFILLAMA_PROTOCOLS_ENDPOINT)
+        protocols = protocols_payload if isinstance(protocols_payload, list) else []
+        if not protocols:
+            raise RuntimeError("empty_protocols")
+    except Exception as error:  # noqa: BLE001
+        refresh_issues["defillama"] = f"fallback_previous_payload:{error}"
+        return clone_json_value(previous) if previous else {
+            "generatedAt": 0,
+            "source": "DefiLlama",
+            "status": "unavailable",
+            "categories": {},
+        }
+
+    listed = build_listed_coin_index(boards)
+    categories = {
+        "tvl": build_defillama_category(
+            listed=listed,
+            protocols=protocols,
+            metric_key="tvl",
+            excluded_categories={"cex", "chain"},
+        ),
+        "rwa": build_defillama_category(
+            listed=listed,
+            protocols=protocols,
+            metric_key="tvl",
+            category="RWA",
+        ),
+    }
+    for category_key, endpoint in (
+        ("dexVolume", DEFILLAMA_DEX_VOLUME_ENDPOINT),
+        ("fees", DEFILLAMA_FEES_ENDPOINT),
+        ("perpOpenInterest", DEFILLAMA_OPEN_INTEREST_ENDPOINT),
+    ):
+        try:
+            payload = fetch_json(endpoint)
+            metric_rows = payload.get("protocols") if isinstance(payload, dict) else []
+            if not isinstance(metric_rows, list) or not metric_rows:
+                raise RuntimeError("empty_metrics")
+            categories[category_key] = build_defillama_category(
+                listed=listed,
+                protocols=protocols,
+                metric_rows=metric_rows,
+                metric_key="total24h",
+            )
+        except Exception as error:  # noqa: BLE001
+            previous_rows = (previous.get("categories") or {}).get(category_key)
+            categories[category_key] = (
+                clone_json_value(previous_rows)
+                if isinstance(previous_rows, list)
+                else []
+            )
+            refresh_issues[f"defillama_{category_key}"] = (
+                f"fallback_previous_payload:{error}"
+            )
+
+    return {
+        "generatedAt": int(time.time()),
+        "source": "DefiLlama",
+        "sourceUrl": "https://defillama.com/",
+        "status": "ok",
+        "listedCoinCount": len(listed),
+        "methodology": (
+            "Upbit, Bithumb, Binance, Coinbase listed symbols matched exactly "
+            "to DefiLlama protocol token symbols; the largest protocol metric "
+            "is used once per coin."
+        ),
+        "perpVolumeNote": (
+            "DefiLlama moved derivatives volume to its paid API, so the free "
+            "open-interest ranking is shown separately instead of substituting "
+            "an unofficial volume value."
+        ),
+        "categories": categories,
+    }
+
+
 def make_payload(previous_payload: dict | None = None) -> dict:
     refresh_fx_usd_krw(previous_payload)
     refresh_issues: dict[str, str] = {}
@@ -3123,6 +3368,11 @@ def make_payload(previous_payload: dict | None = None) -> dict:
     for board_name, rows in boards.items():
         ensure_listing_coverage(board_name, expected_pairs[board_name], rows)
     coin_info = build_coin_info(boards, previous_payload)
+    defillama_rankings = build_defillama_rankings(
+        boards,
+        previous_payload,
+        refresh_issues,
+    )
     for rows in boards.values():
         for row in rows:
             row.pop("info", None)
@@ -3141,6 +3391,7 @@ def make_payload(previous_payload: dict | None = None) -> dict:
         "fxSource": FX_SOURCE,
         "boards": boards,
         "coinInfo": coin_info,
+        "defillamaRankings": defillama_rankings,
         "news": news_payload,
         "stats": stats,
         "changes": build_changes(boards, previous_payload),
