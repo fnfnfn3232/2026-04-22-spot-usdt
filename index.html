@@ -4953,6 +4953,21 @@
         }
       }
 
+      function getServerAuthTokenExpiry(token = getServerAuthToken()) {
+        const expiresAt = Number(String(token || "").split(".")[0]) * 1000;
+        return Number.isFinite(expiresAt) ? expiresAt : 0;
+      }
+
+      function syncServerSession(payload) {
+        if (!payload?.token) return 0;
+        setServerAuthToken(payload.token);
+        const expiresAt = Number(payload.expiresAt) || getServerAuthTokenExpiry(payload.token);
+        if (expiresAt > Date.now()) {
+          setLockAuthUntil(expiresAt);
+        }
+        return expiresAt;
+      }
+
       function handleServerAuthExpired() {
         if (!hasServerAuth() || isLocalPreview()) return;
         clearSiteLoginState();
@@ -5003,14 +5018,17 @@
           const error = new Error(message);
           error.status = response.status;
           error.payload = payload;
-          if (response.status === 401 && message === "auth_required" && path !== "/api/login") {
+          if (
+            response.status === 401
+            && message === "auth_required"
+            && path !== "/api/login"
+            && path !== "/api/admin/verify"
+          ) {
             handleServerAuthExpired();
           }
           throw error;
         }
-        if (payload?.token) {
-          setServerAuthToken(payload.token);
-        }
+        syncServerSession(payload);
         return payload;
       }
 
@@ -5246,8 +5264,7 @@
 
       async function verifyServerSession() {
         if (!hasServerAuth() || isLocalPreview()) return true;
-        await fetchServerAuth("/api/session", { method: "GET", timeoutMs: 8000 });
-        return true;
+        return fetchServerAuth("/api/session", { method: "GET", timeoutMs: 8000 });
       }
 
       async function verifySitePassword(password) {
@@ -5884,7 +5901,6 @@
         }
         await loginWithServerPassword(password);
         setLockExtendCount(0);
-        setLockAuthFor24Hours();
         hideSiteLock();
         renderLockTtl();
         return fetchServerFreeBoardAdminLogs(password);
@@ -8377,9 +8393,17 @@
         localStorage.setItem(LOCK_EXTEND_COUNT_KEY, String(Math.max(0, Math.floor(count))));
       }
 
+      function setLockAuthUntil(until) {
+        const value = Number(until);
+        if (Number.isFinite(value) && value > Date.now()) {
+          localStorage.setItem(LOCK_AUTH_UNTIL_KEY, String(Math.floor(value)));
+        } else {
+          localStorage.removeItem(LOCK_AUTH_UNTIL_KEY);
+        }
+      }
+
       function setLockAuthFor24Hours() {
-        const until = Date.now() + LOCK_TTL_MS;
-        localStorage.setItem(LOCK_AUTH_UNTIL_KEY, String(until));
+        setLockAuthUntil(Date.now() + LOCK_TTL_MS);
       }
 
       function renderLockExtendButton() {
@@ -8451,31 +8475,53 @@
         renderLockExtendButton();
       }
 
+      let siteLockCheckPromise = null;
+
+      async function refreshAuthenticatedSite() {
+        await requestServerScreenSettingsRefresh({ selectDefault: true });
+        await fetchLatestBoardData();
+        await refreshLiveMarketData();
+      }
+
       function checkSiteLock() {
+        if (siteLockCheckPromise) return siteLockCheckPromise;
         if (isLocalPreview()) {
           setLockExtendCount(0);
           setLockAuthFor24Hours();
           hideSiteLock();
           renderLockTtl();
-          return;
+          return Promise.resolve(true);
         }
-        const until = getLockAuthUntil();
-        if (until > Date.now()) {
-          hideSiteLock();
-          renderLockTtl();
-          verifyServerSession()
-            .then(() => requestServerScreenSettingsRefresh({ selectDefault: true }))
-            .then(() => fetchLatestBoardData())
-            .then(() => refreshLiveMarketData())
-            .catch((error) => {
-              console.error(error);
-              if (isServerAuthExpiredError(error)) handleServerAuthExpired();
-            });
-          return;
-        }
-        clearSiteLoginState();
-        renderLockTtl();
-        showSiteLock();
+
+        siteLockCheckPromise = (async () => {
+          const until = getLockAuthUntil();
+          if (until > Date.now()) {
+            hideSiteLock();
+            renderLockTtl();
+          }
+
+          try {
+            await verifyServerSession();
+            hideSiteLock();
+            lockError.textContent = "";
+            renderLockTtl();
+            await refreshAuthenticatedSite();
+            return true;
+          } catch (error) {
+            console.error(error);
+            if (isServerAuthExpiredError(error)) {
+              handleServerAuthExpired();
+            } else if (until <= Date.now()) {
+              renderLockTtl();
+              showSiteLock();
+              lockError.textContent = "인증 서버에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.";
+            }
+            return false;
+          }
+        })().finally(() => {
+          siteLockCheckPromise = null;
+        });
+        return siteLockCheckPromise;
       }
 
       lockForm.addEventListener("submit", async (event) => {
@@ -8486,7 +8532,6 @@
             lockError.textContent = "\uC11C\uBC84\uC5D0\uC11C \uD655\uC778 \uC911\uC785\uB2C8\uB2E4...";
             await loginWithServerPassword(value);
             setLockExtendCount(0);
-            setLockAuthFor24Hours();
             hideSiteLock();
             renderLockTtl();
             lockPasswordInput.value = "";
@@ -8715,7 +8760,9 @@
             await verifyServerSession();
           }
           setLockExtendCount(used + 1);
-          setLockAuthFor24Hours();
+          if (!hasServerAuth() || isLocalPreview()) {
+            setLockAuthFor24Hours();
+          }
           renderLockTtl();
         } catch (error) {
           console.error(error);

@@ -466,12 +466,20 @@ function sessionCookie(token) {
   return `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=${SESSION_TTL_SECONDS}`;
 }
 
+function sessionPayload(token) {
+  const expiresAt = Number(String(token || "").split(".")[0]) * 1000;
+  return {
+    ok: true,
+    token,
+    expiresAt: Number.isFinite(expiresAt) ? expiresAt : 0,
+  };
+}
+
 async function createSessionCookie(env) {
   return sessionCookie(await createSessionToken(env));
 }
 
-async function isAuthenticated(request, env) {
-  const token = getCookie(request, COOKIE_NAME) || getBearerToken(request);
+async function isValidSessionToken(token, env) {
   const parts = token.split(".");
   if (parts.length !== 3) return false;
   const [expText, nonce, signature] = parts;
@@ -479,6 +487,14 @@ async function isAuthenticated(request, env) {
   if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return false;
   const expected = await hmacHex(env.SESSION_SECRET, `${expText}.${nonce}`);
   return timingSafeEqual(signature, expected);
+}
+
+async function isAuthenticated(request, env) {
+  const cookieToken = getCookie(request, COOKIE_NAME);
+  const bearerToken = getBearerToken(request);
+  if (cookieToken && await isValidSessionToken(cookieToken, env)) return true;
+  if (bearerToken && bearerToken !== cookieToken && await isValidSessionToken(bearerToken, env)) return true;
+  return false;
 }
 
 function cleanNewsText(value) {
@@ -1575,7 +1591,7 @@ async function handleLogin(request, env) {
   const token = await createSessionToken(env);
   const headers = new Headers(jsonResponse({ ok: true }, 200, env).headers);
   headers.append("Set-Cookie", sessionCookie(token));
-  return new Response(JSON.stringify({ ok: true, token }), { status: 200, headers });
+  return new Response(JSON.stringify(sessionPayload(token)), { status: 200, headers });
 }
 
 function handleLogout(env) {
@@ -1590,7 +1606,7 @@ async function handleSession(request, env) {
   const token = await createSessionToken(env);
   const headers = new Headers(jsonResponse({ ok: true }, 200, env).headers);
   headers.append("Set-Cookie", sessionCookie(token));
-  return new Response(JSON.stringify({ ok: true, token }), { status: 200, headers });
+  return new Response(JSON.stringify(sessionPayload(token)), { status: 200, headers });
 }
 
 export class BoardStore {
@@ -2206,7 +2222,7 @@ export class BoardStore {
     const token = await createSessionToken(this.env);
     const headers = new Headers(jsonResponse({ ok: true }, 200, this.env).headers);
     headers.append("Set-Cookie", sessionCookie(token));
-    return new Response(JSON.stringify({ ok: true, token }), { status: 200, headers });
+    return new Response(JSON.stringify(sessionPayload(token)), { status: 200, headers });
   }
 
   async fetch(request) {
