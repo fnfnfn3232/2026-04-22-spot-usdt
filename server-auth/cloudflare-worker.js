@@ -441,8 +441,24 @@ function getForwardedLoginClientIp(request) {
   return (request.headers.get("X-Login-Client-IP") || getClientIp(request)).trim() || "unknown";
 }
 
+function normalizeEmailAddress(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getEmailLoginDestinations(env) {
+  return [...new Set([
+    normalizeEmailAddress(env?.OTP_EMAIL_TO),
+    normalizeEmailAddress(env?.OTP_EMAIL_TO_2),
+  ].filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))];
+}
+
+function getAllowedEmailLoginDestination(value, env) {
+  const email = normalizeEmailAddress(value);
+  return getEmailLoginDestinations(env).includes(email) ? email : "";
+}
+
 function isEmailLoginConfigured(env) {
-  return Boolean(String(env?.RESEND_API_KEY || "").trim() && String(env?.OTP_EMAIL_TO || "").trim());
+  return Boolean(String(env?.RESEND_API_KEY || "").trim() && getEmailLoginDestinations(env).length);
 }
 
 function maskEmailAddress(value) {
@@ -468,7 +484,7 @@ async function getEmailOtpHash(requestId, code, env) {
   return hmacHex(env.SESSION_SECRET, `${requestId}.${code}`);
 }
 
-async function sendEmailOtp(code, requestId, env) {
+async function sendEmailOtp(code, requestId, recipient, env) {
   if (!isEmailLoginConfigured(env)) {
     throw new Error("email_login_not_configured");
   }
@@ -481,7 +497,7 @@ async function sendEmailOtp(code, requestId, env) {
     },
     body: JSON.stringify({
       from: String(env.OTP_EMAIL_FROM || "코마캡 <onboarding@resend.dev>").trim(),
-      to: [String(env.OTP_EMAIL_TO).trim()],
+      to: [recipient],
       subject: "코마캡 로그인 인증번호",
       text: `코마캡 로그인 인증번호는 ${code}입니다.\n\n이 번호는 1분 동안만 사용할 수 있으며 한 번 사용하면 폐기됩니다.`,
     }),
@@ -2453,6 +2469,17 @@ export class BoardStore {
       return jsonResponse({ error: "email_login_not_configured" }, 503, this.env);
     }
 
+    let body = {};
+    try {
+      body = await request.json();
+    } catch (_error) {
+      return jsonResponse({ error: "invalid_json" }, 400, this.env);
+    }
+    const recipient = getAllowedEmailLoginDestination(body.email, this.env);
+    if (!recipient) {
+      return jsonResponse({ error: "invalid_email_destination" }, 400, this.env);
+    }
+
     const now = Date.now();
     const clientIpHash = await sha256Hex(getForwardedLoginClientIp(request));
     const rateKey = `${EMAIL_OTP_RATE_KEY_PREFIX}${clientIpHash}`;
@@ -2497,7 +2524,7 @@ export class BoardStore {
     const code = generateEmailOtpCode();
 
     try {
-      await sendEmailOtp(code, requestId, this.env);
+      await sendEmailOtp(code, requestId, recipient, this.env);
     } catch (error) {
       return jsonResponse({
         error: error instanceof Error ? error.message : "email_send_failed",
@@ -2530,7 +2557,7 @@ export class BoardStore {
       ok: true,
       requestId,
       expiresAt,
-      maskedEmail: maskEmailAddress(this.env.OTP_EMAIL_TO),
+      maskedEmail: maskEmailAddress(recipient),
     }, 200, this.env);
   }
 
@@ -2902,9 +2929,10 @@ export default {
     }
 
     if (url.pathname === "/api/login/email/status" && request.method === "GET") {
+      const emailDestinations = getEmailLoginDestinations(env);
       return jsonResponse({
         enabled: isEmailLoginConfigured(env),
-        maskedEmail: isEmailLoginConfigured(env) ? maskEmailAddress(env.OTP_EMAIL_TO) : "",
+        recipientCount: emailDestinations.length,
         expiresInSeconds: Math.floor(EMAIL_OTP_TTL_MS / 1000),
       }, 200, env);
     }

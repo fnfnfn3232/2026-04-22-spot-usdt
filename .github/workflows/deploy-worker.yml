@@ -62,10 +62,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           OTP_EMAIL_TO: ${{ secrets.OTP_EMAIL_TO }}
+          OTP_EMAIL_TO_2: ${{ secrets.OTP_EMAIL_TO_2 }}
         run: |
           if [ -n "$RESEND_API_KEY" ] && [ -n "$OTP_EMAIL_TO" ]; then
             printf '%s' "$RESEND_API_KEY" | npx --yes wrangler@3 secret put RESEND_API_KEY
             printf '%s' "$OTP_EMAIL_TO" | npx --yes wrangler@3 secret put OTP_EMAIL_TO
+            if [ -n "$OTP_EMAIL_TO_2" ]; then
+              printf '%s' "$OTP_EMAIL_TO_2" | npx --yes wrangler@3 secret put OTP_EMAIL_TO_2
+            fi
           else
             echo "Email login secrets are not configured; password login remains enabled."
           fi

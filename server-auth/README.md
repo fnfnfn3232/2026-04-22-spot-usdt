@@ -27,7 +27,9 @@ The current frontend is wired to use this API when `window.SERVER_AUTH_API_BASE`
 - `RESEND_API_KEY`
   - Optional Resend API key used only by the Worker to send login codes.
 - `OTP_EMAIL_TO`
-  - Optional private destination address for login codes. Keep it as a Worker/GitHub secret.
+  - First private destination address for login codes. Keep it as a Worker/GitHub secret.
+- `OTP_EMAIL_TO_2`
+  - Optional second private destination address. Only these registered addresses can request a code.
 - `OTP_EMAIL_FROM`
   - Optional sender. The default deployment uses `코마캡 <onboarding@resend.dev>`.
 - `NEWS_LIMIT`
@@ -106,6 +108,7 @@ Add these GitHub repository secrets:
 - `SESSION_SECRET`
 - `RESEND_API_KEY` (optional, required for email code login)
 - `OTP_EMAIL_TO` (optional, required for email code login)
+- `OTP_EMAIL_TO_2` (optional second permitted email address)
 
 The deploy workflow also creates/uses the private R2 bucket named `coin-board-media`. The Cloudflare API token needs permission to deploy Workers and manage/read/write R2 buckets.
 

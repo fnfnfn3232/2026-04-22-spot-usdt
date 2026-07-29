@@ -122,8 +122,15 @@
       display: none;
     }
 
-    .lock-email-request {
+    .lock-email-request-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+    }
+
+    .lock-email-address {
       width: 100%;
+      min-width: 0;
     }
 
     .lock-email-verify {
@@ -4238,6 +4245,7 @@
           padding: 6px 9px;
         }
 
+        .lock-email-request-row,
         .lock-email-verify {
           grid-template-columns: 1fr;
         }
@@ -4918,7 +4926,10 @@
         <button type="submit" id="lockSubmitBtn">확인</button>
       </form>
       <div class="lock-email hidden" id="lockEmailPanel">
-        <button class="lock-email-request" id="lockEmailRequestBtn" type="button">이메일로 코드 받기</button>
+        <div class="lock-email-request-row">
+          <input class="lock-email-address" id="lockEmailAddressInput" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="코드를 받을 이메일" />
+          <button class="lock-email-request" id="lockEmailRequestBtn" type="button">코드 받기</button>
+        </div>
         <form class="lock-email-verify" id="lockEmailVerifyForm" hidden>
           <input id="lockEmailCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="6자리 인증번호" />
           <button id="lockEmailVerifyBtn" type="submit">코드 확인</button>
@@ -5409,6 +5420,7 @@
       const lockCapsWarning = document.getElementById("lockCapsWarning");
       const lockError = document.getElementById("lockError");
       const lockEmailPanel = document.getElementById("lockEmailPanel");
+      const lockEmailAddressInput = document.getElementById("lockEmailAddressInput");
       const lockEmailRequestBtn = document.getElementById("lockEmailRequestBtn");
       const lockEmailVerifyForm = document.getElementById("lockEmailVerifyForm");
       const lockEmailCodeInput = document.getElementById("lockEmailCodeInput");
@@ -5816,6 +5828,7 @@
       let emailLoginStatusPromise = null;
       let emailOtpRequestId = "";
       let emailOtpExpiresAt = 0;
+      let emailOtpMaskedEmail = "";
       let emailOtpTimerId = 0;
 
       function setEmailLoginStatus(message, isError = false) {
@@ -5836,6 +5849,7 @@
           stopEmailOtpTimer();
           lockEmailVerifyBtn.disabled = true;
           lockEmailCodeInput.disabled = true;
+          lockEmailAddressInput.disabled = false;
           lockEmailRequestBtn.disabled = false;
           lockEmailRequestBtn.textContent = "코드 다시 받기";
           setEmailLoginStatus("인증번호가 만료되었습니다. 새 코드를 받아 주세요.", true);
@@ -5843,8 +5857,10 @@
         }
         lockEmailVerifyBtn.disabled = false;
         lockEmailCodeInput.disabled = false;
+        lockEmailAddressInput.disabled = true;
         lockEmailRequestBtn.disabled = true;
-        setEmailLoginStatus(`인증번호를 보냈습니다. ${remainingSeconds}초 안에 입력해 주세요.`);
+        const destination = emailOtpMaskedEmail ? `${emailOtpMaskedEmail}으로 ` : "";
+        setEmailLoginStatus(`${destination}인증번호를 보냈습니다. ${remainingSeconds}초 안에 입력해 주세요.`);
       }
 
       function startEmailOtpTimer() {
@@ -5857,12 +5873,15 @@
         stopEmailOtpTimer();
         emailOtpRequestId = "";
         emailOtpExpiresAt = 0;
+        emailOtpMaskedEmail = "";
+        lockEmailAddressInput.value = "";
+        lockEmailAddressInput.disabled = false;
         lockEmailCodeInput.value = "";
         lockEmailCodeInput.disabled = false;
         lockEmailVerifyBtn.disabled = false;
         lockEmailVerifyForm.hidden = true;
         lockEmailRequestBtn.disabled = false;
-        lockEmailRequestBtn.textContent = "이메일로 코드 받기";
+        lockEmailRequestBtn.textContent = "코드 받기";
         setEmailLoginStatus("");
       }
 
@@ -5880,8 +5899,7 @@
             const enabled = Boolean(payload?.enabled);
             lockEmailPanel.classList.toggle("hidden", !enabled);
             if (enabled && !emailOtpRequestId) {
-              const destination = String(payload?.maskedEmail || "");
-              setEmailLoginStatus(destination ? `${destination}으로 인증번호를 보냅니다.` : "");
+              setEmailLoginStatus("등록된 이메일 주소를 입력해 주세요.");
             }
             return enabled;
           })
@@ -5907,6 +5925,7 @@
         if (message === "email_otp_attempts_exceeded") return "입력 횟수를 초과했습니다. 새 코드를 받아 주세요.";
         if (message === "email_otp_rate_limited") return `${retryAfter}초 후 새 인증번호를 받을 수 있습니다.`;
         if (message === "email_otp_hourly_limit") return "이메일 요청 횟수가 많습니다. 잠시 후 다시 시도해 주세요.";
+        if (message === "invalid_email_destination") return "등록된 이메일 주소가 아닙니다. 주소를 확인해 주세요.";
         if (message === "email_send_failed") return "인증 이메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.";
         return "이메일 인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
       }
@@ -9498,6 +9517,14 @@
 
       lockEmailRequestBtn.addEventListener("click", async () => {
         lockError.textContent = "";
+        const email = String(lockEmailAddressInput.value || "").trim().toLowerCase();
+        lockEmailAddressInput.value = email;
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          setEmailLoginStatus("코드를 받을 이메일 주소를 정확히 입력해 주세요.", true);
+          lockEmailAddressInput.focus();
+          return;
+        }
+        lockEmailAddressInput.disabled = true;
         lockEmailRequestBtn.disabled = true;
         lockEmailRequestBtn.textContent = "전송 중";
         lockEmailVerifyForm.hidden = true;
@@ -9506,17 +9533,19 @@
           const payload = await fetchServerAuth("/api/login/email/request", {
             method: "POST",
             timeoutMs: 10000,
-            body: JSON.stringify({}),
+            body: JSON.stringify({ email }),
           });
           emailOtpRequestId = String(payload?.requestId || "");
           emailOtpExpiresAt = Number(payload?.expiresAt) || (Date.now() + 60 * 1000);
+          emailOtpMaskedEmail = String(payload?.maskedEmail || "");
           lockEmailCodeInput.value = "";
           lockEmailVerifyForm.hidden = false;
           startEmailOtpTimer();
           window.setTimeout(() => lockEmailCodeInput.focus(), 0);
         } catch (error) {
+          lockEmailAddressInput.disabled = false;
           lockEmailRequestBtn.disabled = false;
-          lockEmailRequestBtn.textContent = "이메일로 코드 받기";
+          lockEmailRequestBtn.textContent = "코드 받기";
           setEmailLoginStatus(getEmailLoginErrorMessage(error), true);
         }
       });
