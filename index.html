@@ -8102,17 +8102,6 @@
         return exchange === "coinbase" ? "코인베이스 선물" : "바이낸스 선물";
       }
 
-      function futuresExpiryLabel(row) {
-        if (String(row?.contractType || "").toUpperCase() === "PERPETUAL") return "무기한";
-        const expiryAt = Number(row?.expiryAt);
-        if (!Number.isFinite(expiryAt) || expiryAt <= 0) return "만기 미확인";
-        return new Date(expiryAt).toLocaleDateString("ko-KR", {
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        });
-      }
-
       function renderFuturesPanel() {
         if (!["binance", "coinbase"].includes(futuresExchange)) {
           futuresExchange = "binance";
@@ -8166,7 +8155,7 @@
               </form>
               <p class="futures-meta">총 ${formatNumber(filteredRows.length, 0)}개 · 시총 확인 ${formatNumber(withCap, 0)}개 · ${futuresPage} / ${totalPages} 페이지</p>
             </div>
-            <p class="futures-note">시총은 선물 계약 자체의 값이 아니라 해당 기초 코인의 현물 시총입니다. 비암호화폐 선물과 주식형 상품은 제외합니다.</p>
+            <p class="futures-note">무기한 코인 선물만 표시합니다. 시총은 선물 계약 자체가 아니라 해당 기초 코인의 현물 시총이며, 월물·분기물·비암호화폐 상품은 제외합니다.</p>
             ${visibleRows.length ? `
               <div class="futures-table-wrap">
                 <table class="futures-table">
@@ -8178,7 +8167,6 @@
                       <th class="futures-type">구분</th>
                       <th class="futures-price">선물 가격</th>
                       <th class="futures-cap">기초자산 시총</th>
-                      <th class="futures-expiry">만기</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -8208,10 +8196,6 @@
                           <td class="futures-cap">
                             <strong>${escapeHtml(cap.main || TEXT.unknown)}</strong>
                             <span>${escapeHtml(cap.sub || TEXT.noCap)}</span>
-                          </td>
-                          <td class="futures-expiry">
-                            <strong>${escapeHtml(futuresExpiryLabel(row))}</strong>
-                            ${row.contractSize ? `<span>계약 크기 ${escapeHtml(formatNumber(Number(row.contractSize), 8))}</span>` : ""}
                           </td>
                         </tr>
                       `;

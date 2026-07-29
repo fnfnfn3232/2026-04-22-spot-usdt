@@ -1756,7 +1756,7 @@ def fetch_binance_futures(known_symbols: set[str] | None = None) -> list[dict]:
             if str(item.get(status_key) or "").upper() != "TRADING":
                 continue
             contract_type = str(item.get("contractType") or "").upper()
-            if contract_type == "TRADIFI_PERPETUAL":
+            if contract_type != "PERPETUAL":
                 continue
             if str(item.get("underlyingType") or "").upper() not in {"", "COIN"}:
                 continue
@@ -1853,6 +1853,8 @@ def fetch_coinbase_futures(known_symbols: set[str] | None = None) -> list[dict]:
             for key in ("display_name", "contract_display_name", "group_description")
         ).upper()
         is_perpetual = "PERP" in perpetual_text
+        if not is_perpetual:
+            continue
         expiry_at = None
         expiry_text = str(details.get("contract_expiry") or "").strip()
         if expiry_text and not is_perpetual:
