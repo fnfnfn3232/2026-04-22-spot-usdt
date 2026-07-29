@@ -26,6 +26,8 @@ The current frontend is wired to use this API when `window.SERVER_AUTH_API_BASE`
   - Long random string used to sign session cookies.
 - `RESEND_API_KEY`
   - Optional Resend API key used only by the Worker to send login codes.
+- `RESEND_API_KEY_2`
+  - Optional key from a second Resend account. Use this when `OTP_EMAIL_TO_2` differs from the first Resend account email and no verified sender domain is configured.
 - `OTP_EMAIL_TO`
   - First private destination address for login codes. Keep it as a Worker/GitHub secret.
 - `OTP_EMAIL_TO_2`
@@ -107,6 +109,7 @@ Add these GitHub repository secrets:
 - `SITE_PASSWORD_SHA256`
 - `SESSION_SECRET`
 - `RESEND_API_KEY` (optional, required for email code login)
+- `RESEND_API_KEY_2` (optional key for the second destination when using the default Resend test sender)
 - `OTP_EMAIL_TO` (optional, required for email code login)
 - `OTP_EMAIL_TO_2` (optional second permitted email address)
 

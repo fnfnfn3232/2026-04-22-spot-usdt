@@ -457,6 +457,13 @@ function getAllowedEmailLoginDestination(value, env) {
   return getEmailLoginDestinations(env).includes(email) ? email : "";
 }
 
+function getEmailLoginApiKey(recipient, env) {
+  const secondDestination = normalizeEmailAddress(env?.OTP_EMAIL_TO_2);
+  const secondApiKey = String(env?.RESEND_API_KEY_2 || "").trim();
+  if (secondApiKey && recipient === secondDestination) return secondApiKey;
+  return String(env?.RESEND_API_KEY || "").trim();
+}
+
 function isEmailLoginConfigured(env) {
   return Boolean(String(env?.RESEND_API_KEY || "").trim() && getEmailLoginDestinations(env).length);
 }
@@ -488,10 +495,12 @@ async function sendEmailOtp(code, requestId, recipient, env) {
   if (!isEmailLoginConfigured(env)) {
     throw new Error("email_login_not_configured");
   }
+  const apiKey = getEmailLoginApiKey(recipient, env);
+  if (!apiKey) throw new Error("email_login_not_configured");
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${String(env.RESEND_API_KEY).trim()}`,
+      "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",
       "Idempotency-Key": `coin-login-${requestId}`,
     },
