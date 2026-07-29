@@ -600,6 +600,7 @@
     .view-switch {
       display: inline-flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 12px;
       margin-top: 2px;
     }
@@ -614,10 +615,15 @@
       letter-spacing: -0.02em;
       cursor: pointer;
       line-height: 1.05;
+      transition: color 160ms ease, transform 160ms ease;
     }
 
     .view-link.active {
       color: var(--accent);
+    }
+
+    .view-link:active {
+      transform: translateY(1px);
     }
 
     p {
@@ -3359,10 +3365,15 @@
     }
 
     .screen-settings-checks,
+    .screen-settings-menu-order,
     .screen-settings-position-buttons {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
+    }
+
+    .screen-settings-menu-order {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
     }
 
     .screen-settings-toggle,
@@ -3382,12 +3393,14 @@
       color: #d7edf7;
     }
 
-    .screen-settings-toggle[data-screen-stat] {
+    .screen-settings-toggle[data-screen-stat],
+    .screen-settings-toggle[data-screen-nav] {
       cursor: grab;
       user-select: none;
     }
 
-    .screen-settings-toggle[data-screen-stat]:active {
+    .screen-settings-toggle[data-screen-stat]:active,
+    .screen-settings-toggle[data-screen-nav]:active {
       cursor: grabbing;
     }
 
@@ -3462,6 +3475,7 @@
     @media (max-width: 900px) {
       .screen-settings-preview,
       .screen-settings-checks,
+      .screen-settings-menu-order,
       .screen-settings-position-buttons {
         grid-template-columns: 1fr;
       }
@@ -4549,11 +4563,12 @@
       <div class="title-row">
         <div class="title-left">
           <h1 id="title"></h1>
-          <div class="view-switch">
-            <button class="view-link" id="newsToggleBtn" type="button"></button>
-            <button class="view-link" id="boardToggleBtn" type="button"></button>
-            <button class="view-link" id="rankingToggleBtn" type="button"></button>
-            <button class="view-link" id="futuresToggleBtn" type="button"></button>
+          <div class="view-switch" id="viewSwitch">
+            <button class="view-link" id="marketToggleBtn" type="button" data-view-nav="market"></button>
+            <button class="view-link" id="newsToggleBtn" type="button" data-view-nav="news"></button>
+            <button class="view-link" id="boardToggleBtn" type="button" data-view-nav="board"></button>
+            <button class="view-link" id="rankingToggleBtn" type="button" data-view-nav="ranking"></button>
+            <button class="view-link" id="futuresToggleBtn" type="button" data-view-nav="futures"></button>
           </div>
           <div class="auto-strip-slot title-status-slot market-only" id="titleStatusSlot"></div>
         </div>
@@ -4789,6 +4804,10 @@
             <div class="screen-settings-preview" id="screenSettingsPreview"></div>
             <div class="screen-settings-body">
               <section class="screen-settings-section">
+                <h3><span>상단 메뉴 순서</span><small>마우스로 끌어서 순서 변경</small></h3>
+                <div class="screen-settings-menu-order" id="screenSettingsMenuOrder"></div>
+              </section>
+              <section class="screen-settings-section">
                 <h3><span>통계 카드 표시</span><small>드래그로 순서 변경 · 누르면 표시/숨김</small></h3>
                 <div class="screen-settings-checks" id="screenSettingsStatChecks"></div>
               </section>
@@ -4877,7 +4896,9 @@
     const SCREEN_SETTINGS_KEY = "fdv_screen_settings_v1";
     const MARKET_SOURCE_VISIBLE_KEY = "fdv_market_source_visible_v1";
     const MARKET_BOARDS = ["binance", "upbit", "bithumb", "coinbase"];
+    const SCREEN_NAV_ITEMS = ["market", "news", "board", "ranking", "futures"];
     const SCREEN_SETTINGS_DEFAULT = {
+      navOrder: ["market", "news", "board", "ranking", "futures"],
       boardOrder: ["binance", "upbit", "bithumb", "coinbase"],
       statusPosition: "summary",
       visibleStats: {
@@ -4970,6 +4991,7 @@
         manualRefreshWait: "\uC548\uC815\uC131 \uBCF4\uD638\ub85C {remain} \uD6C4 \uAC00\uB2A5",
         fileModeSource: "\uB85C\uCEEC \uD30C\uC77C \uBAA8\uB4DC(\uC6D0\uACA9 data.js \uC6B0\uC120 \uC870\uD68C)",
         lastUpdated: "\uB9C8\uC9C0\uB9C9 \uB370\uC774\uD130 \uAC31\uC2E0: {time}",
+        marketOpen: "\uC2DC\uCD1D",
         newsOpen: "\uB274\uC2A4",
         boardOpen: "\uAC8C\uC2DC\uD310",
         rankingOpen: "\uB7AD\uD0B9",
@@ -5136,12 +5158,15 @@
       const compareBoardSelect3 = document.getElementById("compareBoardSelect3");
       const compareSwapBtn = document.getElementById("compareSwapBtn");
       const titleHeading = document.getElementById("title");
+      const viewSwitch = document.getElementById("viewSwitch");
+      const marketToggleBtn = document.getElementById("marketToggleBtn");
       const newsToggleBtn = document.getElementById("newsToggleBtn");
       const boardToggleBtn = document.getElementById("boardToggleBtn");
       const rankingToggleBtn = document.getElementById("rankingToggleBtn");
       const futuresToggleBtn = document.getElementById("futuresToggleBtn");
       const screenSettingsSaveBtn = document.getElementById("screenSettingsSaveBtn");
       const screenSettingsResetBtn = document.getElementById("screenSettingsResetBtn");
+      const screenSettingsMenuOrder = document.getElementById("screenSettingsMenuOrder");
       const screenSettingsStatChecks = document.getElementById("screenSettingsStatChecks");
       const screenSettingsStatusChecks = document.getElementById("screenSettingsStatusChecks");
       const screenSettingsStatusPosition = document.getElementById("screenSettingsStatusPosition");
@@ -9245,6 +9270,7 @@
       document.getElementById("compareNoneOption").textContent = TEXT.compareNone;
       document.getElementById("compareNoneOption2").textContent = TEXT.compareNone;
       document.getElementById("compareNoneOption3").textContent = TEXT.compareNone;
+      marketToggleBtn.textContent = TEXT.marketOpen;
       newsToggleBtn.textContent = TEXT.newsOpen;
       boardToggleBtn.textContent = TEXT.boardOpen;
       rankingToggleBtn.textContent = TEXT.rankingOpen;
@@ -9733,6 +9759,14 @@
 
       function normalizeScreenSettings(raw) {
         const source = raw && typeof raw === "object" ? raw : {};
+        const rawNavOrder = Array.isArray(source.navOrder) ? source.navOrder : SCREEN_SETTINGS_DEFAULT.navOrder;
+        const navOrder = rawNavOrder.filter(
+          (item, index, values) => SCREEN_NAV_ITEMS.includes(item) && values.indexOf(item) === index
+        );
+        SCREEN_NAV_ITEMS.forEach((item) => {
+          if (!navOrder.includes(item)) navOrder.push(item);
+        });
+
         const rawOrder = Array.isArray(source.boardOrder) ? source.boardOrder : SCREEN_SETTINGS_DEFAULT.boardOrder;
         const boardOrder = rawOrder.filter((board) => MARKET_BOARDS.includes(board));
         MARKET_BOARDS.forEach((board) => {
@@ -9756,7 +9790,7 @@
           ? source.statusPosition
           : SCREEN_SETTINGS_DEFAULT.statusPosition;
 
-        return { boardOrder, statusPosition, visibleStats, visibleStatus };
+        return { navOrder, boardOrder, statusPosition, visibleStats, visibleStatus };
       }
 
       function loadScreenSettings() {
@@ -9809,6 +9843,21 @@
         return normalizeScreenSettings(settings).boardOrder;
       }
 
+      function orderedScreenNavItems(settings = screenSettings) {
+        return normalizeScreenSettings(settings).navOrder;
+      }
+
+      function getScreenNavLabel(item) {
+        const labels = {
+          market: TEXT.marketOpen,
+          news: TEXT.newsOpen,
+          board: TEXT.boardOpen,
+          ranking: TEXT.rankingOpen,
+          futures: TEXT.futuresOpen,
+        };
+        return labels[item] || item;
+      }
+
       function getDefaultMarketBoard(settings = screenSettings) {
         const firstBoard = orderedMarketBoards(settings)[0];
         return MARKET_BOARDS.includes(firstBoard) ? firstBoard : "binance";
@@ -9843,6 +9892,11 @@
       function applyScreenSettings() {
         screenSettings = normalizeScreenSettings(screenSettings);
         const order = orderedMarketBoards();
+
+        orderedScreenNavItems().forEach((item) => {
+          const button = viewSwitch?.querySelector(`[data-view-nav="${item}"]`);
+          if (button) viewSwitch.appendChild(button);
+        });
 
         order.forEach((board) => {
           const card = statCards[board];
@@ -9882,6 +9936,7 @@
       }
 
       let screenSettingsDraft = null;
+      let screenSettingsDraggingNav = "";
       let screenSettingsDraggingBoard = "";
       let screenSettingsDragClickSuppressed = false;
       let screenSettingsServerRequest = null;
@@ -10011,17 +10066,57 @@
         persistScreenSettingsToServer(message);
       }
 
+      function captureScreenSettingsRects(root, selector, datasetKey) {
+        const rects = new Map();
+        root?.querySelectorAll(selector).forEach((item) => {
+          const key = item.dataset[datasetKey];
+          if (key) rects.set(key, item.getBoundingClientRect());
+        });
+        return rects;
+      }
+
+      function animateScreenSettingsOrder(root, selector, datasetKey, previousRects) {
+        if (!root || !previousRects?.size || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        window.requestAnimationFrame(() => {
+          root.querySelectorAll(selector).forEach((item) => {
+            const previous = previousRects.get(item.dataset[datasetKey]);
+            if (!previous) return;
+            const current = item.getBoundingClientRect();
+            const offsetX = previous.left - current.left;
+            const offsetY = previous.top - current.top;
+            if (Math.abs(offsetX) < 1 && Math.abs(offsetY) < 1) return;
+            item.animate(
+              [
+                { transform: `translate(${offsetX}px, ${offsetY}px)` },
+                { transform: "translate(0, 0)" },
+              ],
+              { duration: 240, easing: "cubic-bezier(0.22, 1, 0.36, 1)" }
+            );
+          });
+        });
+      }
+
       function renderScreenSettingsEditor() {
-        if (!screenSettingsStatChecks || !screenSettingsStatusChecks || !screenSettingsStatusPosition) return;
+        if (!screenSettingsMenuOrder || !screenSettingsStatChecks || !screenSettingsStatusChecks || !screenSettingsStatusPosition) return;
         try {
+          const previousMenuRects = captureScreenSettingsRects(
+            screenSettingsMenuOrder,
+            "[data-screen-nav]",
+            "screenNav"
+          );
           const draft = normalizeScreenSettings(screenSettingsDraft || screenSettings);
           screenSettingsDraft = draft;
+          const navOrder = orderedScreenNavItems(draft);
           const order = orderedMarketBoards(draft);
           const visibleStatsCount = order.filter((board) => draft.visibleStats[board] !== false).length;
           const visibleStatusCount = Object.values(draft.visibleStatus).filter(Boolean).length;
 
           if (screenSettingsPreview) {
             screenSettingsPreview.innerHTML = `
+              <div class="screen-settings-preview-item">
+                <span class="screen-settings-preview-label">상단 메뉴 순서</span>
+                ${escapeHtml(navOrder.map(getScreenNavLabel).join(" → "))}
+              </div>
               <div class="screen-settings-preview-item">
                 <span class="screen-settings-preview-label">통계 카드 순서</span>
                 ${escapeHtml(order.map(boardLabel).join(" → "))}
@@ -10032,6 +10127,21 @@
               </div>
             `;
           }
+
+          screenSettingsMenuOrder.innerHTML = navOrder
+            .map((item) => `
+              <button class="screen-settings-toggle is-active${screenSettingsDraggingNav === item ? " is-dragging" : ""}" type="button" data-screen-nav="${escapeAttr(item)}" draggable="true" title="마우스로 끌어서 상단 메뉴 순서 변경">
+                <span class="screen-settings-toggle-label">${escapeHtml(getScreenNavLabel(item))}</span>
+                <span class="screen-settings-toggle-state">이동</span>
+              </button>
+            `)
+            .join("");
+          animateScreenSettingsOrder(
+            screenSettingsMenuOrder,
+            "[data-screen-nav]",
+            "screenNav",
+            previousMenuRects
+          );
 
           screenSettingsStatChecks.innerHTML = order
             .map((board) => {
@@ -10093,6 +10203,21 @@
         setScreenSettingsMessage("");
       }
 
+      function buildScreenSettingsNavOrder(dragItem, targetItem, position = "after") {
+        const draft = normalizeScreenSettings(screenSettingsDraft || screenSettings);
+        const order = [...draft.navOrder];
+        const fromIndex = order.indexOf(dragItem);
+        const targetIndex = order.indexOf(targetItem);
+        if (fromIndex < 0 || targetIndex < 0 || fromIndex === targetIndex) return null;
+        const movedItem = order[fromIndex];
+        const nextOrder = order.filter((item) => item !== dragItem);
+        const nextTargetIndex = nextOrder.indexOf(targetItem);
+        if (nextTargetIndex < 0) return null;
+        const insertIndex = position === "before" ? nextTargetIndex : nextTargetIndex + 1;
+        nextOrder.splice(insertIndex, 0, movedItem);
+        return nextOrder;
+      }
+
       function buildScreenSettingsBoardOrder(dragBoard, targetBoard, position = "after") {
         const draft = normalizeScreenSettings(screenSettingsDraft || screenSettings);
         const order = [...draft.boardOrder];
@@ -10109,12 +10234,21 @@
       }
 
       function clearScreenSettingsDropMarkers() {
-        [screenSettingsStatChecks].filter(Boolean).forEach((root) => {
+        [screenSettingsMenuOrder, screenSettingsStatChecks].filter(Boolean).forEach((root) => {
           root.querySelectorAll(".is-drop-before, .is-drop-after, .is-dragging").forEach((item) => {
             item.classList.remove("is-drop-before", "is-drop-after", "is-dragging");
             delete item.dataset.dropPosition;
           });
         });
+      }
+
+      function saveScreenSettingsDraggedNavOrder(dragItem, targetItem, position = "after") {
+        const nextOrder = buildScreenSettingsNavOrder(dragItem, targetItem, position);
+        if (!nextOrder) return;
+        const draft = normalizeScreenSettings(screenSettingsDraft || screenSettings);
+        draft.navOrder = nextOrder;
+        screenSettingsDraft = draft;
+        commitScreenSettingsDraft("상단 메뉴 순서를 저장했습니다.");
       }
 
       function saveScreenSettingsDraggedOrder(dragBoard, targetBoard, position = "after") {
@@ -11238,6 +11372,7 @@
 
       function setViewMode(mode, options = {}) {
         state.viewMode = ["news", "board", "ranking", "futures"].includes(mode) ? mode : "market";
+        const isMarketMode = state.viewMode === "market";
         const isNewsMode = state.viewMode === "news";
         const isBoardMode = state.viewMode === "board";
         const isRankingMode = state.viewMode === "ranking";
@@ -11246,6 +11381,7 @@
         appShell.classList.toggle("board-mode", isBoardMode);
         appShell.classList.toggle("ranking-mode", isRankingMode);
         appShell.classList.toggle("futures-mode", isFuturesMode);
+        marketToggleBtn.classList.toggle("active", isMarketMode);
         newsToggleBtn.classList.toggle("active", isNewsMode);
         boardToggleBtn.classList.toggle("active", isBoardMode);
         rankingToggleBtn.classList.toggle("active", isRankingMode);
@@ -12527,6 +12663,10 @@
         renderFreeBoardComposePreview(textarea);
       });
 
+      marketToggleBtn.addEventListener("click", () => {
+        goHomeView();
+      });
+
       newsToggleBtn.addEventListener("click", () => {
         setViewMode("news");
       });
@@ -12607,6 +12747,62 @@
       updateTopControlsVisibility();
       updateScrollControls();
       sendUsageBeacon();
+
+      if (screenSettingsMenuOrder) {
+        screenSettingsMenuOrder.addEventListener("dragstart", (event) => {
+          const dragTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
+          const button = dragTarget?.closest("[data-screen-nav]");
+          if (!button || !event.dataTransfer) return;
+          const item = button.dataset.screenNav;
+          if (!SCREEN_NAV_ITEMS.includes(item)) return;
+          screenSettingsDraggingNav = item;
+          button.classList.add("is-dragging");
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", item);
+        });
+
+        screenSettingsMenuOrder.addEventListener("dragover", (event) => {
+          if (!screenSettingsDraggingNav) return;
+          const dragTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
+          const button = dragTarget?.closest("[data-screen-nav]");
+          if (!button || !event.dataTransfer) return;
+          const targetItem = button.dataset.screenNav;
+          if (!SCREEN_NAV_ITEMS.includes(targetItem) || targetItem === screenSettingsDraggingNav) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          const rect = button.getBoundingClientRect();
+          const position = event.clientX < rect.left + rect.width / 2 ? "before" : "after";
+          screenSettingsMenuOrder.querySelectorAll(".screen-settings-toggle.is-drop-before, .screen-settings-toggle.is-drop-after")
+            .forEach((item) => {
+              if (item !== button) {
+                item.classList.remove("is-drop-before", "is-drop-after");
+                delete item.dataset.dropPosition;
+              }
+            });
+          button.classList.toggle("is-drop-before", position === "before");
+          button.classList.toggle("is-drop-after", position === "after");
+          button.dataset.dropPosition = position;
+        });
+
+        screenSettingsMenuOrder.addEventListener("drop", (event) => {
+          if (!screenSettingsDraggingNav) return;
+          const dropTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
+          const button = dropTarget?.closest("[data-screen-nav]");
+          if (!button) return;
+          event.preventDefault();
+          const targetItem = button.dataset.screenNav;
+          const position = button.dataset.dropPosition || "after";
+          const dragItem = screenSettingsDraggingNav;
+          screenSettingsDraggingNav = "";
+          clearScreenSettingsDropMarkers();
+          saveScreenSettingsDraggedNavOrder(dragItem, targetItem, position);
+        });
+
+        screenSettingsMenuOrder.addEventListener("dragend", () => {
+          screenSettingsDraggingNav = "";
+          clearScreenSettingsDropMarkers();
+        });
+      }
 
       if (screenSettingsStatChecks) {
         screenSettingsStatChecks.addEventListener("dragstart", (event) => {
