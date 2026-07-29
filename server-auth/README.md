@@ -24,6 +24,12 @@ The current frontend is wired to use this API when `window.SERVER_AUTH_API_BASE`
   - SHA-256 hex of the site password.
 - `SESSION_SECRET`
   - Long random string used to sign session cookies.
+- `RESEND_API_KEY`
+  - Optional Resend API key used only by the Worker to send login codes.
+- `OTP_EMAIL_TO`
+  - Optional private destination address for login codes. Keep it as a Worker/GitHub secret.
+- `OTP_EMAIL_FROM`
+  - Optional sender. The default deployment uses `코마캡 <onboarding@resend.dev>`.
 - `NEWS_LIMIT`
   - Optional. Coinness currently accepts up to 40 per fetch; keep this at `40`.
 - `NEWS_STORE_LIMIT`
@@ -98,6 +104,8 @@ Add these GitHub repository secrets:
 - `CLOUDFLARE_ACCOUNT_ID`
 - `SITE_PASSWORD_SHA256`
 - `SESSION_SECRET`
+- `RESEND_API_KEY` (optional, required for email code login)
+- `OTP_EMAIL_TO` (optional, required for email code login)
 
 The deploy workflow also creates/uses the private R2 bucket named `coin-board-media`. The Cloudflare API token needs permission to deploy Workers and manage/read/write R2 buckets.
 

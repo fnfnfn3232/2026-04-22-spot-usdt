@@ -109,6 +109,46 @@
       min-width: 0;
     }
 
+    .lock-email {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(151, 183, 198, 0.2);
+    }
+
+    .lock-email.hidden,
+    .lock-email-verify[hidden] {
+      display: none;
+    }
+
+    .lock-email-request {
+      width: 100%;
+    }
+
+    .lock-email-verify {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+    }
+
+    .lock-email-verify input {
+      width: 100%;
+      min-width: 0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .lock-email-status {
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .lock-email-status.is-error {
+      color: #b4232f;
+    }
+
     .lock-caps-warning {
       display: inline-flex;
       align-items: center;
@@ -4198,6 +4238,10 @@
           padding: 6px 9px;
         }
 
+        .lock-email-verify {
+          grid-template-columns: 1fr;
+        }
+
         .delete-auth-panel {
           padding: 46px 18px;
         }
@@ -4864,8 +4908,8 @@
 
   <div class="site-lock hidden" id="siteLock">
     <section class="lock-card">
-      <h2 class="lock-title">비밀번호 입력</h2>
-      <p class="lock-desc">설정된 비밀번호를 입력해야 이 페이지를 볼 수 있습니다.</p>
+      <h2 class="lock-title">로그인</h2>
+      <p class="lock-desc">비밀번호 또는 이메일 인증으로 로그인할 수 있습니다.</p>
       <form class="lock-form" id="lockForm">
         <div class="lock-input-wrap">
           <input id="lockPasswordInput" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="done" placeholder="비밀번호" />
@@ -4873,6 +4917,14 @@
         </div>
         <button type="submit" id="lockSubmitBtn">확인</button>
       </form>
+      <div class="lock-email hidden" id="lockEmailPanel">
+        <button class="lock-email-request" id="lockEmailRequestBtn" type="button">이메일로 코드 받기</button>
+        <form class="lock-email-verify" id="lockEmailVerifyForm" hidden>
+          <input id="lockEmailCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="6자리 인증번호" />
+          <button id="lockEmailVerifyBtn" type="submit">코드 확인</button>
+        </form>
+        <div class="lock-email-status" id="lockEmailStatus" aria-live="polite"></div>
+      </div>
       <div class="lock-error" id="lockError"></div>
     </section>
   </div>
@@ -5356,6 +5408,12 @@
       const lockPasswordInput = document.getElementById("lockPasswordInput");
       const lockCapsWarning = document.getElementById("lockCapsWarning");
       const lockError = document.getElementById("lockError");
+      const lockEmailPanel = document.getElementById("lockEmailPanel");
+      const lockEmailRequestBtn = document.getElementById("lockEmailRequestBtn");
+      const lockEmailVerifyForm = document.getElementById("lockEmailVerifyForm");
+      const lockEmailCodeInput = document.getElementById("lockEmailCodeInput");
+      const lockEmailVerifyBtn = document.getElementById("lockEmailVerifyBtn");
+      const lockEmailStatus = document.getElementById("lockEmailStatus");
       const adminLaunchBtn = document.getElementById("adminLaunchBtn");
       const adminModal = document.getElementById("adminModal");
       const adminAuthPanel = document.getElementById("adminAuthPanel");
@@ -5753,6 +5811,122 @@
           method: "POST",
           body: JSON.stringify({ password }),
         });
+      }
+
+      let emailLoginStatusPromise = null;
+      let emailOtpRequestId = "";
+      let emailOtpExpiresAt = 0;
+      let emailOtpTimerId = 0;
+
+      function setEmailLoginStatus(message, isError = false) {
+        lockEmailStatus.textContent = String(message || "");
+        lockEmailStatus.classList.toggle("is-error", Boolean(isError));
+      }
+
+      function stopEmailOtpTimer() {
+        if (emailOtpTimerId) {
+          window.clearInterval(emailOtpTimerId);
+          emailOtpTimerId = 0;
+        }
+      }
+
+      function renderEmailOtpCountdown() {
+        const remainingSeconds = Math.max(0, Math.ceil((emailOtpExpiresAt - Date.now()) / 1000));
+        if (remainingSeconds <= 0) {
+          stopEmailOtpTimer();
+          lockEmailVerifyBtn.disabled = true;
+          lockEmailCodeInput.disabled = true;
+          lockEmailRequestBtn.disabled = false;
+          lockEmailRequestBtn.textContent = "코드 다시 받기";
+          setEmailLoginStatus("인증번호가 만료되었습니다. 새 코드를 받아 주세요.", true);
+          return;
+        }
+        lockEmailVerifyBtn.disabled = false;
+        lockEmailCodeInput.disabled = false;
+        lockEmailRequestBtn.disabled = true;
+        setEmailLoginStatus(`인증번호를 보냈습니다. ${remainingSeconds}초 안에 입력해 주세요.`);
+      }
+
+      function startEmailOtpTimer() {
+        stopEmailOtpTimer();
+        renderEmailOtpCountdown();
+        emailOtpTimerId = window.setInterval(renderEmailOtpCountdown, 250);
+      }
+
+      function resetEmailLoginForm() {
+        stopEmailOtpTimer();
+        emailOtpRequestId = "";
+        emailOtpExpiresAt = 0;
+        lockEmailCodeInput.value = "";
+        lockEmailCodeInput.disabled = false;
+        lockEmailVerifyBtn.disabled = false;
+        lockEmailVerifyForm.hidden = true;
+        lockEmailRequestBtn.disabled = false;
+        lockEmailRequestBtn.textContent = "이메일로 코드 받기";
+        setEmailLoginStatus("");
+      }
+
+      async function refreshEmailLoginAvailability(force = false) {
+        if (!hasServerAuth() || isLocalPreview()) {
+          lockEmailPanel.classList.add("hidden");
+          return false;
+        }
+        if (emailLoginStatusPromise && !force) return emailLoginStatusPromise;
+        emailLoginStatusPromise = fetchServerAuth("/api/login/email/status", {
+          method: "GET",
+          timeoutMs: 5000,
+        })
+          .then((payload) => {
+            const enabled = Boolean(payload?.enabled);
+            lockEmailPanel.classList.toggle("hidden", !enabled);
+            if (enabled && !emailOtpRequestId) {
+              const destination = String(payload?.maskedEmail || "");
+              setEmailLoginStatus(destination ? `${destination}으로 인증번호를 보냅니다.` : "");
+            }
+            return enabled;
+          })
+          .catch((error) => {
+            console.error("email_login_status_failed", error);
+            lockEmailPanel.classList.add("hidden");
+            return false;
+          })
+          .finally(() => {
+            emailLoginStatusPromise = null;
+          });
+        return emailLoginStatusPromise;
+      }
+
+      function getEmailLoginErrorMessage(error) {
+        const message = String(error?.message || "");
+        const retryAfter = Math.max(1, Math.ceil(Number(error?.payload?.retryAfterSeconds) || 0));
+        if (message === "email_otp_expired") return "인증번호가 만료되었습니다. 새 코드를 받아 주세요.";
+        if (message === "invalid_email_otp") {
+          const remaining = Math.max(0, Math.floor(Number(error?.payload?.remainingAttempts) || 0));
+          return remaining ? `인증번호가 맞지 않습니다. ${remaining}회 남았습니다.` : "인증번호가 맞지 않습니다.";
+        }
+        if (message === "email_otp_attempts_exceeded") return "입력 횟수를 초과했습니다. 새 코드를 받아 주세요.";
+        if (message === "email_otp_rate_limited") return `${retryAfter}초 후 새 인증번호를 받을 수 있습니다.`;
+        if (message === "email_otp_hourly_limit") return "이메일 요청 횟수가 많습니다. 잠시 후 다시 시도해 주세요.";
+        if (message === "email_send_failed") return "인증 이메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.";
+        return "이메일 인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+      }
+
+      function completeSiteLogin() {
+        setLockExtendCount(0);
+        hideSiteLock();
+        renderLockTtl();
+        lockPasswordInput.value = "";
+        resetEmailLoginForm();
+        requestServerScreenSettingsRefresh({ selectDefault: true });
+        if (state.viewMode === "board") {
+          requestFreeBoardPostsRefresh(true);
+        }
+        fetchLatestBoardData()
+          .then(() => refreshLiveMarketData())
+          .catch((error) => {
+            console.error(error);
+            manualRefreshHint.textContent = "로그인은 완료됐지만 데이터를 불러오지 못했습니다. 수동 갱신을 눌러 다시 시도해 주세요.";
+          });
       }
 
       async function logoutServerSession() {
@@ -9128,6 +9302,8 @@
         lockPasswordInput.value = "";
         lockError.textContent = "";
         setLockCapsWarning(false);
+        resetEmailLoginForm();
+        refreshEmailLoginAvailability();
         window.setTimeout(() => lockPasswordInput.focus(), 0);
       }
 
@@ -9135,6 +9311,7 @@
         document.body.classList.remove("locked");
         siteLock.classList.add("hidden");
         setLockCapsWarning(false);
+        stopEmailOtpTimer();
       }
 
       function getLockAuthUntil() {
@@ -9290,20 +9467,7 @@
           try {
             lockError.textContent = "\uC11C\uBC84\uC5D0\uC11C \uD655\uC778 \uC911\uC785\uB2C8\uB2E4...";
             await loginWithServerPassword(value);
-            setLockExtendCount(0);
-            hideSiteLock();
-            renderLockTtl();
-            lockPasswordInput.value = "";
-            requestServerScreenSettingsRefresh({ selectDefault: true });
-            if (state.viewMode === "board") {
-              requestFreeBoardPostsRefresh(true);
-            }
-            fetchLatestBoardData()
-              .then(() => refreshLiveMarketData())
-              .catch((error) => {
-                console.error(error);
-                manualRefreshHint.textContent = "\uB85C\uADF8\uC778\uC740 \uC644\uB8CC\uB410\uC9C0\uB9CC \uB370\uC774\uD130\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC218\uB3D9 \uAC31\uC2E0\uC744 \uB20C\uB7EC \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.";
-              });
+            completeSiteLogin();
           } catch (error) {
             lockError.textContent = getLoginErrorMessage(error);
             lockPasswordInput.value = "";
@@ -9331,6 +9495,77 @@
       lockPasswordInput.addEventListener("keydown", updateLockCapsWarning);
       lockPasswordInput.addEventListener("keyup", updateLockCapsWarning);
       lockPasswordInput.addEventListener("blur", () => setLockCapsWarning(false));
+
+      lockEmailRequestBtn.addEventListener("click", async () => {
+        lockError.textContent = "";
+        lockEmailRequestBtn.disabled = true;
+        lockEmailRequestBtn.textContent = "전송 중";
+        lockEmailVerifyForm.hidden = true;
+        setEmailLoginStatus("인증번호를 보내는 중입니다...");
+        try {
+          const payload = await fetchServerAuth("/api/login/email/request", {
+            method: "POST",
+            timeoutMs: 10000,
+            body: JSON.stringify({}),
+          });
+          emailOtpRequestId = String(payload?.requestId || "");
+          emailOtpExpiresAt = Number(payload?.expiresAt) || (Date.now() + 60 * 1000);
+          lockEmailCodeInput.value = "";
+          lockEmailVerifyForm.hidden = false;
+          startEmailOtpTimer();
+          window.setTimeout(() => lockEmailCodeInput.focus(), 0);
+        } catch (error) {
+          lockEmailRequestBtn.disabled = false;
+          lockEmailRequestBtn.textContent = "이메일로 코드 받기";
+          setEmailLoginStatus(getEmailLoginErrorMessage(error), true);
+        }
+      });
+
+      lockEmailVerifyForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const code = String(lockEmailCodeInput.value || "").replace(/\D/g, "").slice(0, 6);
+        lockEmailCodeInput.value = code;
+        if (!emailOtpRequestId || emailOtpExpiresAt <= Date.now()) {
+          setEmailLoginStatus("인증번호가 만료되었습니다. 새 코드를 받아 주세요.", true);
+          renderEmailOtpCountdown();
+          return;
+        }
+        if (!/^\d{6}$/.test(code)) {
+          setEmailLoginStatus("6자리 숫자를 입력해 주세요.", true);
+          lockEmailCodeInput.focus();
+          return;
+        }
+
+        lockEmailVerifyBtn.disabled = true;
+        setEmailLoginStatus("인증번호를 확인하는 중입니다...");
+        try {
+          await fetchServerAuth("/api/login/email/verify", {
+            method: "POST",
+            timeoutMs: 8000,
+            body: JSON.stringify({ requestId: emailOtpRequestId, code }),
+          });
+          completeSiteLogin();
+        } catch (error) {
+          const message = String(error?.message || "");
+          if (message === "email_otp_expired" || message === "email_otp_attempts_exceeded") {
+            emailOtpExpiresAt = 0;
+            stopEmailOtpTimer();
+            lockEmailRequestBtn.disabled = false;
+            lockEmailRequestBtn.textContent = "코드 다시 받기";
+          }
+          setEmailLoginStatus(getEmailLoginErrorMessage(error), true);
+          lockEmailCodeInput.value = "";
+          lockEmailCodeInput.focus();
+        } finally {
+          if (!siteLock.classList.contains("hidden") && emailOtpExpiresAt > Date.now()) {
+            lockEmailVerifyBtn.disabled = false;
+          }
+        }
+      });
+
+      lockEmailCodeInput.addEventListener("input", () => {
+        lockEmailCodeInput.value = String(lockEmailCodeInput.value || "").replace(/\D/g, "").slice(0, 6);
+      });
 
       adminLaunchBtn.addEventListener("click", showAdminModal);
       adminAuthCloseBtn.addEventListener("click", closeAdminModal);

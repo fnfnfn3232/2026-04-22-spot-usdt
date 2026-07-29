@@ -10,6 +10,10 @@ const MARKET_DATA_KEY = "market-data-v1";
 const MARKET_DATA_CHUNK_PREFIX = "market-data-v1:chunk:";
 const SCREEN_SETTINGS_KEY = "screen-settings-v1";
 const LOGIN_ATTEMPT_KEY_PREFIX = "login-attempt:";
+const EMAIL_OTP_KEY_PREFIX = "email-login-otp:";
+const EMAIL_OTP_RATE_KEY_PREFIX = "email-login-rate:";
+const EMAIL_OTP_CURRENT_KEY = "email-login-current";
+const EMAIL_OTP_GLOBAL_RATE_KEY = "email-login-global-rate";
 const BOARD_MAX_POSTS = 200;
 const BOARD_MAX_MEDIA = 10;
 const BOARD_MAX_COMMENTS = 100;
@@ -43,6 +47,11 @@ const USAGE_BEACON_MAX_BYTES = 25 * 1024 * 1024;
 const DEFAULT_NEWS_CACHE_SECONDS = 10 * 60;
 const LOGIN_FAILURE_LIMIT = 10;
 const LOGIN_LOCK_MS = 30 * 60 * 1000;
+const EMAIL_OTP_TTL_MS = 60 * 1000;
+const EMAIL_OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const EMAIL_OTP_HOURLY_LIMIT = 5;
+const EMAIL_OTP_GLOBAL_HOURLY_LIMIT = 10;
+const EMAIL_OTP_VERIFY_LIMIT = 5;
 const GITHUB_OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 const GITHUB_OIDC_JWKS_URL = `${GITHUB_OIDC_ISSUER}/.well-known/jwks`;
 const GITHUB_OIDC_REPOSITORY = "fnfnfn3232/coin";
@@ -430,6 +439,58 @@ function getClientIp(request) {
 
 function getForwardedLoginClientIp(request) {
   return (request.headers.get("X-Login-Client-IP") || getClientIp(request)).trim() || "unknown";
+}
+
+function isEmailLoginConfigured(env) {
+  return Boolean(String(env?.RESEND_API_KEY || "").trim() && String(env?.OTP_EMAIL_TO || "").trim());
+}
+
+function maskEmailAddress(value) {
+  const email = String(value || "").trim();
+  const at = email.indexOf("@");
+  if (at <= 0) return "";
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  const visible = local.slice(0, Math.min(3, local.length));
+  return `${visible}${"*".repeat(Math.max(3, local.length - visible.length))}@${domain}`;
+}
+
+function generateEmailOtpCode() {
+  const limit = Math.floor(0x100000000 / 1000000) * 1000000;
+  const values = new Uint32Array(1);
+  do {
+    crypto.getRandomValues(values);
+  } while (values[0] >= limit);
+  return String(values[0] % 1000000).padStart(6, "0");
+}
+
+async function getEmailOtpHash(requestId, code, env) {
+  return hmacHex(env.SESSION_SECRET, `${requestId}.${code}`);
+}
+
+async function sendEmailOtp(code, requestId, env) {
+  if (!isEmailLoginConfigured(env)) {
+    throw new Error("email_login_not_configured");
+  }
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${String(env.RESEND_API_KEY).trim()}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": `coin-login-${requestId}`,
+    },
+    body: JSON.stringify({
+      from: String(env.OTP_EMAIL_FROM || "코마캡 <onboarding@resend.dev>").trim(),
+      to: [String(env.OTP_EMAIL_TO).trim()],
+      subject: "코마캡 로그인 인증번호",
+      text: `코마캡 로그인 인증번호는 ${code}입니다.\n\n이 번호는 1분 동안만 사용할 수 있으며 한 번 사용하면 폐기됩니다.`,
+    }),
+  });
+  if (!response.ok) {
+    const message = (await response.text()).slice(0, 500);
+    console.error("email_otp_send_failed", response.status, message);
+    throw new Error("email_send_failed");
+  }
 }
 
 function normalizeLoginAttemptRecord(raw) {
@@ -2387,12 +2448,155 @@ export class BoardStore {
     return new Response(JSON.stringify(sessionPayload(token)), { status: 200, headers });
   }
 
+  async handleEmailOtpRequest(request) {
+    if (!isEmailLoginConfigured(this.env)) {
+      return jsonResponse({ error: "email_login_not_configured" }, 503, this.env);
+    }
+
+    const now = Date.now();
+    const clientIpHash = await sha256Hex(getForwardedLoginClientIp(request));
+    const rateKey = `${EMAIL_OTP_RATE_KEY_PREFIX}${clientIpHash}`;
+    const rate = {
+      windowStartedAt: 0,
+      count: 0,
+      lastSentAt: 0,
+      ...((await this.state.storage.get(rateKey)) || {}),
+    };
+    const globalRate = {
+      windowStartedAt: 0,
+      count: 0,
+      lastSentAt: 0,
+      ...((await this.state.storage.get(EMAIL_OTP_GLOBAL_RATE_KEY)) || {}),
+    };
+    const retryAt = Math.max(
+      Number(rate.lastSentAt) + EMAIL_OTP_RESEND_COOLDOWN_MS,
+      Number(globalRate.lastSentAt) + EMAIL_OTP_RESEND_COOLDOWN_MS
+    );
+    if (retryAt > now) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((retryAt - now) / 1000));
+      return jsonResponse({ error: "email_otp_rate_limited", retryAfterSeconds }, 429, this.env);
+    }
+
+    const windowStartedAt = Number(rate.windowStartedAt) || now;
+    const inCurrentWindow = now - windowStartedAt < 60 * 60 * 1000;
+    const hourlyCount = inCurrentWindow ? Math.max(0, Math.floor(Number(rate.count) || 0)) : 0;
+    if (hourlyCount >= EMAIL_OTP_HOURLY_LIMIT) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((windowStartedAt + 60 * 60 * 1000 - now) / 1000));
+      return jsonResponse({ error: "email_otp_hourly_limit", retryAfterSeconds }, 429, this.env);
+    }
+    const globalWindowStartedAt = Number(globalRate.windowStartedAt) || now;
+    const inGlobalWindow = now - globalWindowStartedAt < 60 * 60 * 1000;
+    const globalHourlyCount = inGlobalWindow ? Math.max(0, Math.floor(Number(globalRate.count) || 0)) : 0;
+    if (globalHourlyCount >= EMAIL_OTP_GLOBAL_HOURLY_LIMIT) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((globalWindowStartedAt + 60 * 60 * 1000 - now) / 1000));
+      return jsonResponse({ error: "email_otp_hourly_limit", retryAfterSeconds }, 429, this.env);
+    }
+
+    const previousRequestId = String(await this.state.storage.get(EMAIL_OTP_CURRENT_KEY) || "");
+    const requestId = crypto.randomUUID();
+    const code = generateEmailOtpCode();
+
+    try {
+      await sendEmailOtp(code, requestId, this.env);
+    } catch (error) {
+      return jsonResponse({
+        error: error instanceof Error ? error.message : "email_send_failed",
+      }, 503, this.env);
+    }
+
+    const sentAt = Date.now();
+    const expiresAt = sentAt + EMAIL_OTP_TTL_MS;
+    if (previousRequestId) {
+      await this.state.storage.delete(`${EMAIL_OTP_KEY_PREFIX}${previousRequestId}`);
+    }
+    await this.state.storage.put(`${EMAIL_OTP_KEY_PREFIX}${requestId}`, {
+      codeHash: await getEmailOtpHash(requestId, code, this.env),
+      expiresAt,
+      attempts: 0,
+    });
+    await this.state.storage.put(EMAIL_OTP_CURRENT_KEY, requestId);
+    await this.state.storage.put(rateKey, {
+      windowStartedAt: inCurrentWindow ? windowStartedAt : now,
+      count: hourlyCount + 1,
+      lastSentAt: sentAt,
+    });
+    await this.state.storage.put(EMAIL_OTP_GLOBAL_RATE_KEY, {
+      windowStartedAt: inGlobalWindow ? globalWindowStartedAt : sentAt,
+      count: globalHourlyCount + 1,
+      lastSentAt: sentAt,
+    });
+
+    return jsonResponse({
+      ok: true,
+      requestId,
+      expiresAt,
+      maskedEmail: maskEmailAddress(this.env.OTP_EMAIL_TO),
+    }, 200, this.env);
+  }
+
+  async handleEmailOtpVerify(request) {
+    if (!isEmailLoginConfigured(this.env)) {
+      return jsonResponse({ error: "email_login_not_configured" }, 503, this.env);
+    }
+
+    let body = {};
+    try {
+      body = await request.json();
+    } catch (_error) {
+      return jsonResponse({ error: "invalid_json" }, 400, this.env);
+    }
+    const requestId = String(body.requestId || "").trim();
+    const code = String(body.code || "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(requestId) || !/^\d{6}$/.test(code)) {
+      return jsonResponse({ error: "invalid_email_otp" }, 401, this.env);
+    }
+
+    const otpKey = `${EMAIL_OTP_KEY_PREFIX}${requestId}`;
+    const record = await this.state.storage.get(otpKey);
+    if (!record || Number(record.expiresAt) <= Date.now()) {
+      await this.state.storage.delete(otpKey);
+      return jsonResponse({ error: "email_otp_expired" }, 401, this.env);
+    }
+
+    const attempts = Math.max(0, Math.floor(Number(record.attempts) || 0));
+    const valid = timingSafeEqual(
+      String(record.codeHash || ""),
+      await getEmailOtpHash(requestId, code, this.env)
+    );
+    if (!valid) {
+      const nextAttempts = attempts + 1;
+      if (nextAttempts >= EMAIL_OTP_VERIFY_LIMIT) {
+        await this.state.storage.delete(otpKey);
+        await this.state.storage.delete(EMAIL_OTP_CURRENT_KEY);
+        return jsonResponse({ error: "email_otp_attempts_exceeded" }, 401, this.env);
+      }
+      await this.state.storage.put(otpKey, { ...record, attempts: nextAttempts });
+      return jsonResponse({
+        error: "invalid_email_otp",
+        remainingAttempts: EMAIL_OTP_VERIFY_LIMIT - nextAttempts,
+      }, 401, this.env);
+    }
+
+    await this.state.storage.delete(otpKey);
+    await this.state.storage.delete(EMAIL_OTP_CURRENT_KEY);
+    const token = await createSessionToken(this.env);
+    const headers = new Headers(jsonResponse({ ok: true }, 200, this.env).headers);
+    headers.append("Set-Cookie", sessionCookie(token));
+    return new Response(JSON.stringify(sessionPayload(token)), { status: 200, headers });
+  }
+
   async fetch(request) {
     const url = new URL(request.url);
     const postId = decodeURIComponent(url.pathname.replace(/^\/api\/board\/posts\/?/, ""));
 
     if (request.method === "POST" && url.pathname === "/api/login") {
       return this.handleLoginRequest(request);
+    }
+    if (request.method === "POST" && url.pathname === "/api/login/email/request") {
+      return this.handleEmailOtpRequest(request);
+    }
+    if (request.method === "POST" && url.pathname === "/api/login/email/verify") {
+      return this.handleEmailOtpVerify(request);
     }
 
     if (request.method === "POST" && url.pathname === "/api/market-data") {
@@ -2697,6 +2901,29 @@ export default {
       return originNotAllowedResponse(env);
     }
 
+    if (url.pathname === "/api/login/email/status" && request.method === "GET") {
+      return jsonResponse({
+        enabled: isEmailLoginConfigured(env),
+        maskedEmail: isEmailLoginConfigured(env) ? maskEmailAddress(env.OTP_EMAIL_TO) : "",
+        expiresInSeconds: Math.floor(EMAIL_OTP_TTL_MS / 1000),
+      }, 200, env);
+    }
+    if (
+      request.method === "POST"
+      && (url.pathname === "/api/login/email/request" || url.pathname === "/api/login/email/verify")
+    ) {
+      if (!env.BOARD_STORE) {
+        return jsonResponse({ error: "email_login_storage_not_configured" }, 503, env);
+      }
+      const id = env.BOARD_STORE.idFromName("free-board");
+      const headers = new Headers(request.headers);
+      headers.set("X-Login-Client-IP", getClientIp(request));
+      return env.BOARD_STORE.get(id).fetch(new Request(request.url, {
+        method: request.method,
+        headers,
+        body: request.body,
+      }));
+    }
     if (url.pathname === "/api/login" && request.method === "POST") {
       if (env.BOARD_STORE) {
         const id = env.BOARD_STORE.idFromName("free-board");

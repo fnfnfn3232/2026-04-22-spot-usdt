@@ -7,6 +7,7 @@ FRONTEND_ORIGIN = "https://fnfnfn3232.github.io"
 NEWS_LIMIT = "40"
 NEWS_STORE_LIMIT = "1000"
 NEWS_CACHE_SECONDS = "600"
+OTP_EMAIL_FROM = "코마캡 <onboarding@resend.dev>"
 
 [[r2_buckets]]
 binding = "BOARD_MEDIA_BUCKET"
@@ -15,3 +16,5 @@ bucket_name = "coin-board-media"
 # Set these as secrets, not plain vars:
 # wrangler secret put SITE_PASSWORD_SHA256
 # wrangler secret put SESSION_SECRET
+# wrangler secret put RESEND_API_KEY
+# wrangler secret put OTP_EMAIL_TO
