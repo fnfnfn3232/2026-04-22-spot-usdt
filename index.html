@@ -1148,6 +1148,28 @@
         flex: 0 0 auto;
       }
 
+      .futures-sort {
+        display: flex;
+        flex: 0 0 auto;
+        gap: 6px;
+      }
+
+      .futures-sort button {
+        min-height: 38px;
+        padding: 0 13px;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .futures-sort button.active {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+
       .futures-meta,
       .futures-note {
         color: var(--muted);
@@ -3530,6 +3552,14 @@
           width: 100%;
         }
 
+        .futures-sort {
+          width: 100%;
+        }
+
+        .futures-sort button {
+          flex: 1 1 0;
+        }
+
         .futures-meta {
           padding: 0 2px;
         }
@@ -5812,6 +5842,7 @@
       let futuresExchange = "binance";
       let futuresQuery = "";
       let futuresPage = 1;
+      let futuresSortDirection = "desc";
       let adminServerPassword = "";
       let serverUsageStats = null;
       let serverUsageError = "";
@@ -8110,7 +8141,7 @@
           ? data.futures[futuresExchange]
           : [];
         const normalizedQuery = futuresQuery.trim().toLocaleLowerCase("ko-KR");
-        const filteredRows = !normalizedQuery
+        const matchingRows = !normalizedQuery
           ? allRows
           : allRows.filter((row) => [
               row.contractId,
@@ -8125,6 +8156,17 @@
             ].filter(Boolean).some((value) =>
               String(value).toLocaleLowerCase("ko-KR").includes(normalizedQuery)
             ));
+        const filteredRows = [...matchingRows].sort((a, b) => {
+          const aCap = toPositiveNumber(a.sortCapUsd);
+          const bCap = toPositiveNumber(b.sortCapUsd);
+          if (aCap === null && bCap === null) {
+            return String(a.contractId || "").localeCompare(String(b.contractId || ""));
+          }
+          if (aCap === null) return 1;
+          if (bCap === null) return -1;
+          const difference = futuresSortDirection === "asc" ? aCap - bCap : bCap - aCap;
+          return difference || String(a.contractId || "").localeCompare(String(b.contractId || ""));
+        });
         const totalPages = Math.max(1, Math.ceil(filteredRows.length / FUTURES_PAGE_SIZE));
         if (futuresPage > totalPages) futuresPage = 1;
         const start = (futuresPage - 1) * FUTURES_PAGE_SIZE;
@@ -8153,6 +8195,10 @@
                 <button type="submit">검색</button>
                 ${futuresQuery ? `<button type="button" data-futures-clear>초기화</button>` : ""}
               </form>
+              <div class="futures-sort" aria-label="기초자산 시총 정렬">
+                <button class="${futuresSortDirection === "desc" ? "active" : ""}" type="button" data-futures-sort="desc" aria-pressed="${futuresSortDirection === "desc"}">시총 높은 순</button>
+                <button class="${futuresSortDirection === "asc" ? "active" : ""}" type="button" data-futures-sort="asc" aria-pressed="${futuresSortDirection === "asc"}">시총 낮은 순</button>
+              </div>
               <p class="futures-meta">총 ${formatNumber(filteredRows.length, 0)}개 · 시총 확인 ${formatNumber(withCap, 0)}개 · ${futuresPage} / ${totalPages} 페이지</p>
             </div>
             <p class="futures-note">무기한 코인 선물만 표시합니다. 시총은 선물 계약 자체가 아니라 해당 기초 코인의 현물 시총이며, 월물·분기물·비암호화폐 상품은 제외합니다.</p>
@@ -8166,7 +8212,7 @@
                       <th class="futures-underlying">기초 코인</th>
                       <th class="futures-type">구분</th>
                       <th class="futures-price">선물 가격</th>
-                      <th class="futures-cap">기초자산 시총</th>
+                      <th class="futures-cap">기초자산 시총 ${futuresSortDirection === "asc" ? "↑" : "↓"}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -11124,6 +11170,7 @@
           futuresExchange,
           futuresQuery,
           futuresPage,
+          futuresSortDirection,
         };
       }
 
@@ -11183,6 +11230,7 @@
           : "binance";
         futuresQuery = String(payload.futuresQuery || "").slice(0, 80);
         futuresPage = Math.max(1, Math.floor(Number(payload.futuresPage) || 1));
+        futuresSortDirection = payload.futuresSortDirection === "asc" ? "asc" : "desc";
         setViewMode(payload.viewMode, { writeHistory: false });
         isApplyingHistoryState = false;
         saveAppViewState();
@@ -11995,6 +12043,15 @@
             renderFuturesPanel();
             writeAppHistoryState(true);
           }
+          return;
+        }
+
+        const futuresSortButton = clickTarget.closest("[data-futures-sort]");
+        if (futuresSortButton) {
+          futuresSortDirection = futuresSortButton.dataset.futuresSort === "asc" ? "asc" : "desc";
+          futuresPage = 1;
+          renderFuturesPanel();
+          writeAppHistoryState(true);
           return;
         }
 
