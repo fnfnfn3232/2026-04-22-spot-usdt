@@ -7679,6 +7679,11 @@
       }
 
       function renderFreeBoard() {
+        const previousCategoryRects = captureOrderedItemRects(
+          newsPanel,
+          ".free-board-category-chip[data-free-board-category-value]",
+          "freeBoardCategoryValue"
+        );
         const shouldLoadServerCategories = hasFreeBoardServer()
           && !isSiteLocked()
           && !freeBoardCategoriesLoaded
@@ -7903,6 +7908,12 @@
             </section>
           </div>
         `;
+        animateOrderedItemMovement(
+          newsPanel,
+          ".free-board-category-chip[data-free-board-category-value]",
+          "freeBoardCategoryValue",
+          previousCategoryRects
+        );
       }
 
       function renderNewsPanel() {
@@ -9892,6 +9903,16 @@
       function applyScreenSettings() {
         screenSettings = normalizeScreenSettings(screenSettings);
         const order = orderedMarketBoards();
+        const previousNavRects = captureOrderedItemRects(
+          viewSwitch,
+          "[data-view-nav]",
+          "viewNav"
+        );
+        const previousStatRects = captureOrderedItemRects(
+          summaryStats,
+          "[data-stat-board]",
+          "statBoard"
+        );
 
         orderedScreenNavItems().forEach((item) => {
           const button = viewSwitch?.querySelector(`[data-view-nav="${item}"]`);
@@ -9933,6 +9954,8 @@
           autoStrip.hidden = false;
           slot.appendChild(autoStrip);
         }
+        animateOrderedItemMovement(viewSwitch, "[data-view-nav]", "viewNav", previousNavRects);
+        animateOrderedItemMovement(summaryStats, "[data-stat-board]", "statBoard", previousStatRects);
       }
 
       let screenSettingsDraft = null;
@@ -10066,7 +10089,7 @@
         persistScreenSettingsToServer(message);
       }
 
-      function captureScreenSettingsRects(root, selector, datasetKey) {
+      function captureOrderedItemRects(root, selector, datasetKey) {
         const rects = new Map();
         root?.querySelectorAll(selector).forEach((item) => {
           const key = item.dataset[datasetKey];
@@ -10075,7 +10098,7 @@
         return rects;
       }
 
-      function animateScreenSettingsOrder(root, selector, datasetKey, previousRects) {
+      function animateOrderedItemMovement(root, selector, datasetKey, previousRects) {
         if (!root || !previousRects?.size || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
         window.requestAnimationFrame(() => {
           root.querySelectorAll(selector).forEach((item) => {
@@ -10099,10 +10122,15 @@
       function renderScreenSettingsEditor() {
         if (!screenSettingsMenuOrder || !screenSettingsStatChecks || !screenSettingsStatusChecks || !screenSettingsStatusPosition) return;
         try {
-          const previousMenuRects = captureScreenSettingsRects(
+          const previousMenuRects = captureOrderedItemRects(
             screenSettingsMenuOrder,
             "[data-screen-nav]",
             "screenNav"
+          );
+          const previousStatRects = captureOrderedItemRects(
+            screenSettingsStatChecks,
+            "[data-screen-stat]",
+            "screenStat"
           );
           const draft = normalizeScreenSettings(screenSettingsDraft || screenSettings);
           screenSettingsDraft = draft;
@@ -10136,7 +10164,7 @@
               </button>
             `)
             .join("");
-          animateScreenSettingsOrder(
+          animateOrderedItemMovement(
             screenSettingsMenuOrder,
             "[data-screen-nav]",
             "screenNav",
@@ -10154,6 +10182,12 @@
               `;
             })
             .join("");
+          animateOrderedItemMovement(
+            screenSettingsStatChecks,
+            "[data-screen-stat]",
+            "screenStat",
+            previousStatRects
+          );
 
           const positionItems = [
             ["summary", "통계 카드 아래"],
