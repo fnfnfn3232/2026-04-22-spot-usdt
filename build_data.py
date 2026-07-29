@@ -34,6 +34,14 @@ COINMARKETCAP_QUOTES_ENDPOINT = (
 )
 COINBASE_CURRENCIES_ENDPOINT = "https://api.exchange.coinbase.com/currencies"
 COINBASE_PRODUCT_STATS_ENDPOINT = "https://api.exchange.coinbase.com/products/stats"
+BINANCE_USDM_FUTURES_INFO_ENDPOINT = "https://fapi.binance.com/fapi/v1/exchangeInfo"
+BINANCE_USDM_FUTURES_PRICE_ENDPOINT = "https://fapi.binance.com/fapi/v1/ticker/price"
+BINANCE_COINM_FUTURES_INFO_ENDPOINT = "https://dapi.binance.com/dapi/v1/exchangeInfo"
+BINANCE_COINM_FUTURES_PRICE_ENDPOINT = "https://dapi.binance.com/dapi/v1/ticker/price"
+COINBASE_FUTURES_PRODUCTS_ENDPOINT = (
+    "https://api.coinbase.com/api/v3/brokerage/market/products"
+    "?product_type=FUTURE&limit=250"
+)
 DEFILLAMA_PROTOCOLS_ENDPOINT = "https://api.llama.fi/protocols"
 DEFILLAMA_FEES_ENDPOINT = (
     "https://api.llama.fi/overview/fees"
@@ -309,6 +317,19 @@ def clone_previous_board_rows(previous_payload: dict | None, board_name: str) ->
         return []
     try:
         # JSON round-trip to safely deep-copy nested structures.
+        return json.loads(json.dumps(rows, ensure_ascii=False))
+    except (TypeError, ValueError):
+        return []
+
+
+def clone_previous_futures_rows(previous_payload: dict | None, exchange_name: str) -> list[dict]:
+    futures = (previous_payload or {}).get("futures")
+    if not isinstance(futures, dict):
+        return []
+    rows = futures.get(exchange_name)
+    if not isinstance(rows, list):
+        return []
+    try:
         return json.loads(json.dumps(rows, ensure_ascii=False))
     except (TypeError, ValueError):
         return []
@@ -1684,6 +1705,289 @@ def fetch_coinbase() -> list[dict]:
             row
         )
     return rows
+
+
+def normalize_futures_underlying_symbol(value: object, known_symbols: set[str] | None = None) -> str:
+    symbol = str(value or "").upper().strip()
+    if not symbol:
+        return ""
+    known = known_symbols or set()
+    if symbol in known:
+        return symbol
+    for prefix in ("1000000", "1000"):
+        if symbol.startswith(prefix):
+            candidate = symbol[len(prefix) :]
+            if candidate and (not known or candidate in known):
+                return candidate
+    return symbol
+
+
+def fetch_binance_futures(known_symbols: set[str] | None = None) -> list[dict]:
+    rows: list[dict] = []
+    sources = (
+        (
+            "usdm",
+            "\u0055\u0053\u0044\u24c8\u002d\u004d",
+            BINANCE_USDM_FUTURES_INFO_ENDPOINT,
+            BINANCE_USDM_FUTURES_PRICE_ENDPOINT,
+            "status",
+        ),
+        (
+            "coinm",
+            "\u0043\u004f\u0049\u004e\u002d\u004d",
+            BINANCE_COINM_FUTURES_INFO_ENDPOINT,
+            BINANCE_COINM_FUTURES_PRICE_ENDPOINT,
+            "contractStatus",
+        ),
+    )
+    for market_key, market_label, info_endpoint, price_endpoint, status_key in sources:
+        info_payload = fetch_json(info_endpoint)
+        price_payload = fetch_json(price_endpoint)
+        symbols = info_payload.get("symbols") if isinstance(info_payload, dict) else []
+        prices = price_payload if isinstance(price_payload, list) else []
+        price_map = {
+            str(item.get("symbol") or "").upper(): to_float(item.get("price"))
+            for item in prices
+            if isinstance(item, dict) and str(item.get("symbol") or "").strip()
+        }
+        for item in symbols if isinstance(symbols, list) else []:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get(status_key) or "").upper() != "TRADING":
+                continue
+            contract_type = str(item.get("contractType") or "").upper()
+            if contract_type == "TRADIFI_PERPETUAL":
+                continue
+            if str(item.get("underlyingType") or "").upper() not in {"", "COIN"}:
+                continue
+            contract_id = str(item.get("symbol") or "").upper().strip()
+            raw_underlying = str(item.get("baseAsset") or "").upper().strip()
+            underlying = normalize_futures_underlying_symbol(raw_underlying, known_symbols)
+            if not contract_id or not underlying:
+                continue
+            is_perpetual = contract_type == "PERPETUAL"
+            delivery_date = int(to_float(item.get("deliveryDate")) or 0)
+            price_usd = price_map.get(contract_id)
+            rows.append(
+                {
+                    "exchange": "binance",
+                    "contractId": contract_id,
+                    "symbol": underlying,
+                    "rawUnderlyingSymbol": raw_underlying,
+                    "pair": contract_id,
+                    "name": underlying,
+                    "englishName": underlying,
+                    "koreanName": underlying,
+                    "contractType": contract_type,
+                    "contractTypeLabel": (
+                        "\ubb34\uae30\ud55c"
+                        if is_perpetual
+                        else (
+                            "\ud604\uc7ac \ubd84\uae30"
+                            if contract_type == "CURRENT_QUARTER"
+                            else (
+                                "\ub2e4\uc74c \ubd84\uae30"
+                                if contract_type == "NEXT_QUARTER"
+                                else "\ub9cc\uae30\ud615"
+                            )
+                        )
+                    ),
+                    "contractMarket": market_label,
+                    "quoteAsset": str(item.get("quoteAsset") or "USD").upper(),
+                    "nativeCurrency": "USD",
+                    "priceUsd": price_usd,
+                    "priceKrw": price_usd * FX_USD_KRW if price_usd is not None else None,
+                    "priceSource": f"binance_{market_key}_futures_ticker",
+                    "marketCapUsd": None,
+                    "marketCapKrw": None,
+                    "marketCapRank": None,
+                    "circulatingSupply": None,
+                    "totalSupply": None,
+                    "fdvUsd": None,
+                    "fdvKrw": None,
+                    "circulatingRatio": None,
+                    "expiryAt": None if is_perpetual else delivery_date,
+                    "onboardAt": int(to_float(item.get("onboardDate")) or 0) or None,
+                    "contractSize": to_float(item.get("contractSize")),
+                    "capSource": "futures_underlying_missing",
+                    "capSourceDetail": "futures_underlying_market_cap_missing",
+                    "status": "missing",
+                    "riskFlags": [],
+                    "nameKeys": list(build_name_keys(underlying, underlying, underlying)),
+                }
+            )
+    return rows
+
+
+def fetch_coinbase_futures(known_symbols: set[str] | None = None) -> list[dict]:
+    payload = fetch_json(COINBASE_FUTURES_PRODUCTS_ENDPOINT)
+    products = payload.get("products") if isinstance(payload, dict) else []
+    rows: list[dict] = []
+    for item in products if isinstance(products, list) else []:
+        if not isinstance(item, dict) or str(item.get("product_type") or "").upper() != "FUTURE":
+            continue
+        details = item.get("future_product_details")
+        if not isinstance(details, dict) or bool(details.get("non_crypto")):
+            continue
+        asset_types = {
+            str(value or "").upper()
+            for value in (details.get("futures_asset_types") or [])
+        }
+        if asset_types and "FUTURES_ASSET_TYPE_CRYPTO" not in asset_types:
+            continue
+        if bool(item.get("trading_disabled")) or bool(item.get("is_disabled")):
+            continue
+        contract_id = str(item.get("product_id") or "").upper().strip()
+        raw_underlying = str(details.get("contract_root_unit") or "").upper().strip()
+        underlying = normalize_futures_underlying_symbol(raw_underlying, known_symbols)
+        if not contract_id or not underlying:
+            continue
+        display_name = str(
+            details.get("display_name")
+            or details.get("contract_display_name")
+            or item.get("display_name")
+            or contract_id
+        ).strip()
+        perpetual_text = " ".join(
+            str(details.get(key) or "")
+            for key in ("display_name", "contract_display_name", "group_description")
+        ).upper()
+        is_perpetual = "PERP" in perpetual_text
+        expiry_at = None
+        expiry_text = str(details.get("contract_expiry") or "").strip()
+        if expiry_text and not is_perpetual:
+            try:
+                expiry_at = int(datetime.fromisoformat(expiry_text.replace("Z", "+00:00")).timestamp() * 1000)
+            except ValueError:
+                expiry_at = None
+        price_usd = to_float(item.get("price"))
+        rows.append(
+            {
+                "exchange": "coinbase",
+                "contractId": contract_id,
+                "symbol": underlying,
+                "rawUnderlyingSymbol": raw_underlying,
+                "pair": contract_id,
+                "name": display_name,
+                "englishName": display_name,
+                "koreanName": underlying,
+                "contractType": "PERPETUAL" if is_perpetual else "EXPIRING",
+                "contractTypeLabel": "\ubb34\uae30\ud55c" if is_perpetual else "\ub9cc\uae30\ud615",
+                "contractMarket": "Coinbase Derivatives",
+                "quoteAsset": str(item.get("quote_currency_id") or "USD").upper(),
+                "nativeCurrency": "USD",
+                "priceUsd": price_usd,
+                "priceKrw": price_usd * FX_USD_KRW if price_usd is not None else None,
+                "priceSource": "coinbase_public_futures_products",
+                "marketCapUsd": None,
+                "marketCapKrw": None,
+                "marketCapRank": None,
+                "circulatingSupply": None,
+                "totalSupply": None,
+                "fdvUsd": None,
+                "fdvKrw": None,
+                "circulatingRatio": None,
+                "expiryAt": expiry_at,
+                "onboardAt": None,
+                "contractSize": to_float(details.get("contract_size")),
+                "openInterest": to_float(details.get("open_interest")),
+                "capSource": "futures_underlying_missing",
+                "capSourceDetail": "futures_underlying_market_cap_missing",
+                "status": "missing",
+                "riskFlags": [],
+                "nameKeys": list(build_name_keys(display_name, display_name, underlying)),
+            }
+        )
+    return rows
+
+
+def apply_futures_underlying_market_data(
+    futures_rows: list[dict],
+    reference_groups: list[tuple[str, list[dict]]],
+    external_candidates: dict[str, list[dict]] | None = None,
+) -> None:
+    reference_maps = [
+        (board_name, build_rows_by_symbol(rows))
+        for board_name, rows in reference_groups
+    ]
+    external_candidates = external_candidates or {}
+    for row in futures_rows:
+        symbol = str(row.get("symbol") or "").upper()
+        if not symbol:
+            continue
+        references: list[tuple[str, dict]] = []
+        for board_name, reference_map in reference_maps:
+            references.extend((board_name, candidate) for candidate in reference_map.get(symbol, []))
+        identity_reference = next(
+            (
+                candidate
+                for _board_name, candidate in references
+                if has_hangul(str(candidate.get("koreanName") or candidate.get("name") or ""))
+            ),
+            references[0][1] if references else None,
+        )
+        market_reference_pair = next(
+            (
+                (board_name, candidate)
+                for board_name, candidate in references
+                if to_float(candidate.get("marketCapUsd")) is not None
+                or to_float(candidate.get("marketCapKrw")) is not None
+            ),
+            None,
+        )
+        if market_reference_pair is None:
+            external = max(
+                external_candidates.get(symbol, []),
+                key=lambda candidate: to_float(candidate.get("marketCapUsd")) or 0,
+                default=None,
+            )
+            if external is not None:
+                market_reference_pair = ("coingecko", external)
+
+        if identity_reference is not None:
+            row["name"] = (
+                identity_reference.get("koreanName")
+                or identity_reference.get("name")
+                or row.get("name")
+            )
+            row["koreanName"] = identity_reference.get("koreanName") or row.get("koreanName")
+            row["englishName"] = identity_reference.get("englishName") or row.get("englishName")
+
+        if market_reference_pair is not None:
+            board_name, market_reference = market_reference_pair
+            for key in (
+                "marketCapUsd",
+                "marketCapKrw",
+                "marketCapRank",
+                "circulatingSupply",
+                "totalSupply",
+                "fdvUsd",
+                "fdvKrw",
+                "circulatingRatio",
+            ):
+                if market_reference.get(key) is not None:
+                    row[key] = market_reference.get(key)
+            market_cap_usd = to_float(row.get("marketCapUsd"))
+            market_cap_krw = to_float(row.get("marketCapKrw"))
+            if market_cap_usd is None and market_cap_krw is not None:
+                row["marketCapUsd"] = market_cap_krw / FX_USD_KRW
+            elif market_cap_krw is None and market_cap_usd is not None:
+                row["marketCapKrw"] = market_cap_usd * FX_USD_KRW
+            row["capSource"] = f"futures_underlying_{board_name}"
+            row["capSourceDetail"] = str(
+                market_reference.get("capSourceDetail")
+                or market_reference.get("capSource")
+                or board_name
+            )
+            row["status"] = "ok"
+
+        row["nameKeys"] = list(
+            build_name_keys(
+                str(row.get("name") or symbol),
+                str(row.get("englishName") or symbol),
+                str(row.get("koreanName") or symbol),
+            )
+        )
 
 
 def pick_first_candidate_with_market_signal(candidate_rows: list[dict]) -> dict | None:
@@ -3402,6 +3706,81 @@ def make_payload(previous_payload: dict | None = None) -> dict:
     apply_implied_circulating_supply_fills("coinbase", coinbase_rows)
     apply_binance_korean_name_fills(binance_rows, upbit_rows, bithumb_rows)
 
+    spot_reference_groups = [
+        ("binance", binance_rows),
+        ("upbit", upbit_rows),
+        ("bithumb", bithumb_rows),
+        ("coinbase", coinbase_rows),
+    ]
+    known_symbols = {
+        symbol
+        for _board_name, rows in spot_reference_groups
+        for row in rows
+        for symbol in row_symbols(row)
+    }
+    futures_rows: dict[str, list[dict]] = {}
+    for exchange_name, fetcher in (
+        ("binance", fetch_binance_futures),
+        ("coinbase", fetch_coinbase_futures),
+    ):
+        try:
+            fetched_rows = fetcher(known_symbols)
+            if not fetched_rows:
+                raise RuntimeError("empty_futures_products")
+            futures_rows[exchange_name] = fetched_rows
+        except Exception as error:  # noqa: BLE001
+            cached_rows = clone_previous_futures_rows(previous_payload, exchange_name)
+            futures_rows[exchange_name] = cached_rows
+            refresh_issues[f"{exchange_name}_futures"] = (
+                f"fallback_previous_payload:{error}" if cached_rows else f"fetch_failed:{error}"
+            )
+
+    apply_futures_underlying_market_data(
+        futures_rows.get("binance", []),
+        spot_reference_groups,
+        coingecko_supply_candidates,
+    )
+    apply_futures_underlying_market_data(
+        futures_rows.get("coinbase", []),
+        [
+            ("coinbase", coinbase_rows),
+            ("binance", binance_rows),
+            ("upbit", upbit_rows),
+            ("bithumb", bithumb_rows),
+        ],
+        coingecko_supply_candidates,
+    )
+    futures_missing_cap_symbols = {
+        str(row.get("symbol") or "").upper()
+        for rows in futures_rows.values()
+        for row in rows
+        if str(row.get("symbol") or "").strip()
+        and to_float(row.get("marketCapUsd")) is None
+        and to_float(row.get("marketCapKrw")) is None
+    }
+    if futures_missing_cap_symbols:
+        try:
+            futures_market_candidates = fetch_coingecko_supply_candidates(
+                futures_missing_cap_symbols
+            )
+            apply_futures_underlying_market_data(
+                futures_rows.get("binance", []),
+                spot_reference_groups,
+                futures_market_candidates,
+            )
+            apply_futures_underlying_market_data(
+                futures_rows.get("coinbase", []),
+                [
+                    ("coinbase", coinbase_rows),
+                    ("binance", binance_rows),
+                    ("upbit", upbit_rows),
+                    ("bithumb", bithumb_rows),
+                ],
+                futures_market_candidates,
+            )
+        except Exception as error:  # noqa: BLE001
+            refresh_issues["futures_coingecko"] = f"fetch_failed:{error}"
+
     expected_pairs = {
         "binance": {str(row.get("pair") or "").strip() for row in binance_rows},
         "upbit": {str(row.get("pair") or "").strip() for row in upbit_rows},
@@ -3413,6 +3792,10 @@ def make_payload(previous_payload: dict | None = None) -> dict:
         "upbit": finalize_rows(upbit_rows),
         "bithumb": finalize_rows(bithumb_rows),
         "coinbase": finalize_rows(coinbase_rows),
+    }
+    futures = {
+        "binance": finalize_rows(futures_rows.get("binance", [])),
+        "coinbase": finalize_rows(futures_rows.get("coinbase", [])),
     }
     for board_name, rows in boards.items():
         ensure_listing_coverage(board_name, expected_pairs[board_name], rows)
@@ -3430,6 +3813,10 @@ def make_payload(previous_payload: dict | None = None) -> dict:
     for board_name, rows in boards.items():
         with_cap = sum(1 for row in rows if row.get("sortCapUsd") is not None)
         stats[board_name] = {"total": len(rows), "withCap": with_cap}
+    futures_stats = {}
+    for exchange_name, rows in futures.items():
+        with_cap = sum(1 for row in rows if row.get("sortCapUsd") is not None)
+        futures_stats[exchange_name] = {"total": len(rows), "withCap": with_cap}
 
     generated_at = int(time.time())
     return {
@@ -3439,10 +3826,12 @@ def make_payload(previous_payload: dict | None = None) -> dict:
         "fxUsdKrw": FX_USD_KRW,
         "fxSource": FX_SOURCE,
         "boards": boards,
+        "futures": futures,
         "coinInfo": coin_info,
         "defillamaRankings": defillama_rankings,
         "news": news_payload,
         "stats": stats,
+        "futuresStats": futures_stats,
         "changes": build_changes(boards, previous_payload),
         "notes": {
             "binance": "binance_exact_market_cap",

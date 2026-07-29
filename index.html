@@ -873,19 +873,22 @@
 
       .shell.news-mode .news-host,
       .shell.board-mode .news-host,
-      .shell.ranking-mode .news-host {
+      .shell.ranking-mode .news-host,
+      .shell.futures-mode .news-host {
         display: block;
       }
 
       .shell.news-mode .market-only,
       .shell.board-mode .market-only,
-      .shell.ranking-mode .market-only {
+      .shell.ranking-mode .market-only,
+      .shell.futures-mode .market-only {
         display: none !important;
       }
 
       .shell.news-mode .market-section,
       .shell.board-mode .market-section,
-      .shell.ranking-mode .market-section {
+      .shell.ranking-mode .market-section,
+      .shell.futures-mode .market-section {
         display: none;
       }
 
@@ -1087,6 +1090,175 @@
       .news-more-btn:disabled {
         opacity: 0.7;
         cursor: default;
+      }
+
+      .futures-shell {
+        min-width: 0;
+      }
+
+      .futures-tabs {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        overflow-x: auto;
+        border-bottom: 1px solid var(--line);
+        scrollbar-width: thin;
+      }
+
+      .futures-tab {
+        flex: 0 0 auto;
+        min-height: 44px;
+        padding: 0 2px;
+        border: 0;
+        border-bottom: 3px solid transparent;
+        border-radius: 0;
+        background: transparent;
+        color: var(--muted);
+        font-size: 15px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .futures-tab.active {
+        border-bottom-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .futures-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 0 10px;
+      }
+
+      .futures-search {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: min(520px, 100%);
+      }
+
+      .futures-search input {
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+
+      .futures-search button {
+        flex: 0 0 auto;
+      }
+
+      .futures-meta,
+      .futures-note {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .futures-note {
+        margin: 0;
+        padding: 0 0 12px;
+        line-height: 1.6;
+      }
+
+      .futures-table-wrap {
+        overflow-x: auto;
+        border-top: 1px solid var(--line);
+      }
+
+      .futures-table {
+        width: 100%;
+        min-width: 980px;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+
+      .futures-table th,
+      .futures-table td {
+        padding: 14px 12px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      .futures-table th {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .futures-rank {
+        width: 64px;
+        color: var(--muted);
+        font-weight: 800;
+      }
+
+      .futures-contract {
+        width: 25%;
+      }
+
+      .futures-underlying {
+        width: 18%;
+      }
+
+      .futures-type {
+        width: 15%;
+      }
+
+      .futures-price,
+      .futures-cap {
+        width: 17%;
+      }
+
+      .futures-expiry {
+        width: 14%;
+      }
+
+      .futures-contract strong,
+      .futures-underlying strong,
+      .futures-price strong,
+      .futures-cap strong {
+        display: block;
+        color: var(--text);
+        font-size: 15px;
+        font-weight: 900;
+      }
+
+      .futures-contract span,
+      .futures-underlying span,
+      .futures-type span,
+      .futures-price span,
+      .futures-cap span,
+      .futures-expiry span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .futures-pages {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 7px;
+        padding-top: 16px;
+      }
+
+      .futures-pages button {
+        min-width: 38px;
+        min-height: 36px;
+        padding: 6px 10px;
+      }
+
+      .futures-pages button.active {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .futures-empty {
+        padding: 42px 12px;
+        color: var(--muted);
+        text-align: center;
       }
 
       .ranking-shell {
@@ -3340,6 +3512,90 @@
           gap: 10px;
         }
 
+        .futures-tabs {
+          gap: 14px;
+        }
+
+        .futures-tab {
+          min-height: 42px;
+          font-size: 14px;
+        }
+
+        .futures-toolbar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .futures-search {
+          width: 100%;
+        }
+
+        .futures-meta {
+          padding: 0 2px;
+        }
+
+        .futures-table-wrap {
+          overflow: visible;
+          border-top: 0;
+        }
+
+        .futures-table {
+          min-width: 0;
+          table-layout: auto;
+        }
+
+        .futures-table thead {
+          display: none;
+        }
+
+        .futures-table,
+        .futures-table tbody,
+        .futures-table tr,
+        .futures-table td {
+          display: block;
+          width: 100%;
+        }
+
+        .futures-table tr {
+          position: relative;
+          padding: 13px 4px 12px 40px;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .futures-table td {
+          width: auto;
+          padding: 0;
+          border: 0;
+        }
+
+        .futures-rank {
+          position: absolute;
+          top: 14px;
+          left: 4px;
+          width: 28px;
+          font-size: 13px;
+        }
+
+        .futures-underlying,
+        .futures-type,
+        .futures-price,
+        .futures-cap,
+        .futures-expiry {
+          margin-top: 8px;
+        }
+
+        .futures-price,
+        .futures-cap {
+          display: inline-block !important;
+          width: min(50%, 190px) !important;
+          padding-right: 12px !important;
+          vertical-align: top;
+        }
+
+        .futures-note {
+          font-size: 12px;
+        }
+
         .ranking-tabs {
           gap: 14px;
         }
@@ -4267,6 +4523,7 @@
             <button class="view-link" id="newsToggleBtn" type="button"></button>
             <button class="view-link" id="boardToggleBtn" type="button"></button>
             <button class="view-link" id="rankingToggleBtn" type="button"></button>
+            <button class="view-link" id="futuresToggleBtn" type="button"></button>
           </div>
           <div class="auto-strip-slot title-status-slot market-only" id="titleStatusSlot"></div>
         </div>
@@ -4628,6 +4885,7 @@
     const LIVE_NEWS_REFRESH_MS = 10 * 60 * 1000;
     const NEWS_PAGE_SIZE = 40;
     const RANKING_PAGE_SIZE = 50;
+    const FUTURES_PAGE_SIZE = 50;
     const DEFILLAMA_RANKING_CATEGORIES = {
       tvl: { label: "TVL", metricLabel: "현재 TVL" },
       perpOpenInterest: { label: "Perp DEX", metricLabel: "현재 미결제약정" },
@@ -4685,6 +4943,7 @@
         newsOpen: "\uB274\uC2A4",
         boardOpen: "\uAC8C\uC2DC\uD310",
         rankingOpen: "\uB7AD\uD0B9",
+        futuresOpen: "\uC120\uBB3C",
         newsTitle: "",
         newsOpenLink: "\uC0C8 \uCC3D \uC5F4\uAE30",
         newsHint: "\uB274\uC2A4 \uD56D\uBAA9\uC740 \uC694\uC57D \uAE30\uC900\uC73C\uB85C \uD45C\uC2DC\uB429\uB2C8\uB2E4.",
@@ -4781,11 +5040,16 @@
       generatedAt: 0,
       autoRefreshMinutes: 10,
       boards: { binance: [], upbit: [], bithumb: [], coinbase: [] },
+      futures: { binance: [], coinbase: [] },
       coinInfo: {},
       stats: {
         binance: { total: 0, withCap: 0 },
         upbit: { total: 0, withCap: 0 },
         bithumb: { total: 0, withCap: 0 },
+        coinbase: { total: 0, withCap: 0 },
+      },
+      futuresStats: {
+        binance: { total: 0, withCap: 0 },
         coinbase: { total: 0, withCap: 0 },
       },
       notes: {},
@@ -4845,6 +5109,7 @@
       const newsToggleBtn = document.getElementById("newsToggleBtn");
       const boardToggleBtn = document.getElementById("boardToggleBtn");
       const rankingToggleBtn = document.getElementById("rankingToggleBtn");
+      const futuresToggleBtn = document.getElementById("futuresToggleBtn");
       const screenSettingsSaveBtn = document.getElementById("screenSettingsSaveBtn");
       const screenSettingsResetBtn = document.getElementById("screenSettingsResetBtn");
       const screenSettingsStatChecks = document.getElementById("screenSettingsStatChecks");
@@ -5544,6 +5809,9 @@
       let rankingCategory = "tvl";
       let rankingQuery = "";
       let rankingVisibleCount = RANKING_PAGE_SIZE;
+      let futuresExchange = "binance";
+      let futuresQuery = "";
+      let futuresPage = 1;
       let adminServerPassword = "";
       let serverUsageStats = null;
       let serverUsageError = "";
@@ -7830,6 +8098,133 @@
         `;
       }
 
+      function futuresExchangeLabel(exchange) {
+        return exchange === "coinbase" ? "코인베이스 선물" : "바이낸스 선물";
+      }
+
+      function futuresExpiryLabel(row) {
+        if (String(row?.contractType || "").toUpperCase() === "PERPETUAL") return "무기한";
+        const expiryAt = Number(row?.expiryAt);
+        if (!Number.isFinite(expiryAt) || expiryAt <= 0) return "만기 미확인";
+        return new Date(expiryAt).toLocaleDateString("ko-KR", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        });
+      }
+
+      function renderFuturesPanel() {
+        if (!["binance", "coinbase"].includes(futuresExchange)) {
+          futuresExchange = "binance";
+        }
+        const allRows = Array.isArray(data.futures?.[futuresExchange])
+          ? data.futures[futuresExchange]
+          : [];
+        const normalizedQuery = futuresQuery.trim().toLocaleLowerCase("ko-KR");
+        const filteredRows = !normalizedQuery
+          ? allRows
+          : allRows.filter((row) => [
+              row.contractId,
+              row.pair,
+              row.symbol,
+              row.rawUnderlyingSymbol,
+              row.name,
+              row.englishName,
+              row.koreanName,
+              row.contractMarket,
+              row.contractTypeLabel,
+            ].filter(Boolean).some((value) =>
+              String(value).toLocaleLowerCase("ko-KR").includes(normalizedQuery)
+            ));
+        const totalPages = Math.max(1, Math.ceil(filteredRows.length / FUTURES_PAGE_SIZE));
+        if (futuresPage > totalPages) futuresPage = 1;
+        const start = (futuresPage - 1) * FUTURES_PAGE_SIZE;
+        const visibleRows = filteredRows.slice(start, start + FUTURES_PAGE_SIZE);
+        const withCap = filteredRows.filter((row) => toPositiveNumber(row.sortCapUsd) !== null).length;
+        const tabsMarkup = ["binance", "coinbase"].map((exchange) => `
+          <button class="futures-tab${exchange === futuresExchange ? " active" : ""}" type="button" data-futures-exchange="${exchange}">
+            ${escapeHtml(futuresExchangeLabel(exchange))}
+          </button>
+        `).join("");
+        const pagesMarkup = totalPages > 1
+          ? `<div class="futures-pages">${Array.from({ length: totalPages }, (_unused, index) => {
+              const page = index + 1;
+              return `<button class="${page === futuresPage ? "active" : ""}" type="button" data-futures-page="${page}">${page}</button>`;
+            }).join("")}</div>`
+          : "";
+
+        newsPanel.innerHTML = `
+          <div class="futures-shell">
+            <nav class="futures-tabs" aria-label="선물 거래소">
+              ${tabsMarkup}
+            </nav>
+            <div class="futures-toolbar">
+              <form class="futures-search" id="futuresSearchForm">
+                <input name="futuresQuery" type="search" autocomplete="off" placeholder="계약·코인·심볼 검색" value="${escapeAttr(futuresQuery)}" />
+                <button type="submit">검색</button>
+                ${futuresQuery ? `<button type="button" data-futures-clear>초기화</button>` : ""}
+              </form>
+              <p class="futures-meta">총 ${formatNumber(filteredRows.length, 0)}개 · 시총 확인 ${formatNumber(withCap, 0)}개 · ${futuresPage} / ${totalPages} 페이지</p>
+            </div>
+            <p class="futures-note">시총은 선물 계약 자체의 값이 아니라 해당 기초 코인의 현물 시총입니다. 비암호화폐 선물과 주식형 상품은 제외합니다.</p>
+            ${visibleRows.length ? `
+              <div class="futures-table-wrap">
+                <table class="futures-table">
+                  <thead>
+                    <tr>
+                      <th class="futures-rank">순번</th>
+                      <th class="futures-contract">선물 계약</th>
+                      <th class="futures-underlying">기초 코인</th>
+                      <th class="futures-type">구분</th>
+                      <th class="futures-price">선물 가격</th>
+                      <th class="futures-cap">기초자산 시총</th>
+                      <th class="futures-expiry">만기</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${visibleRows.map((row, index) => {
+                      const price = priceDisplay(row);
+                      const cap = capDisplay(row);
+                      const rank = start + index + 1;
+                      return `
+                        <tr>
+                          <td class="futures-rank">${rank}</td>
+                          <td class="futures-contract">
+                            <strong>${escapeHtml(row.contractId || row.pair || "-")}</strong>
+                            <span>${escapeHtml(row.contractMarket || futuresExchangeLabel(futuresExchange))}</span>
+                          </td>
+                          <td class="futures-underlying">
+                            <strong>${escapeHtml(row.name || row.symbol || "-")}</strong>
+                            <span>${escapeHtml(row.symbol || "-")}</span>
+                          </td>
+                          <td class="futures-type">
+                            <strong>${escapeHtml(row.contractTypeLabel || row.contractType || "-")}</strong>
+                            <span>${escapeHtml(row.quoteAsset || "USD")} 결제</span>
+                          </td>
+                          <td class="futures-price">
+                            <strong>${escapeHtml(price.main || TEXT.unknown)}</strong>
+                            <span>${escapeHtml(price.sub || TEXT.noPrice)}</span>
+                          </td>
+                          <td class="futures-cap">
+                            <strong>${escapeHtml(cap.main || TEXT.unknown)}</strong>
+                            <span>${escapeHtml(cap.sub || TEXT.noCap)}</span>
+                          </td>
+                          <td class="futures-expiry">
+                            <strong>${escapeHtml(futuresExpiryLabel(row))}</strong>
+                            ${row.contractSize ? `<span>계약 크기 ${escapeHtml(formatNumber(Number(row.contractSize), 8))}</span>` : ""}
+                          </td>
+                        </tr>
+                      `;
+                    }).join("")}
+                  </tbody>
+                </table>
+              </div>
+              ${pagesMarkup}
+            ` : `<p class="futures-empty">${data.generatedAt ? "조건에 맞는 선물 상품이 없습니다." : "선물 데이터를 준비 중입니다."}</p>`}
+          </div>
+        `;
+      }
+
       function renderContentPanel() {
         if (state.viewMode === "board") {
           renderFreeBoard();
@@ -7837,6 +8232,10 @@
         }
         if (state.viewMode === "ranking") {
           renderRankingPanel();
+          return;
+        }
+        if (state.viewMode === "futures") {
+          renderFuturesPanel();
           return;
         }
         renderNewsPanel();
@@ -8819,6 +9218,7 @@
       newsToggleBtn.textContent = TEXT.newsOpen;
       boardToggleBtn.textContent = TEXT.boardOpen;
       rankingToggleBtn.textContent = TEXT.rankingOpen;
+      futuresToggleBtn.textContent = TEXT.futuresOpen;
       baseBoardSelect.querySelector('option[value="binance"]').textContent = TEXT.tabBinance;
       baseBoardSelect.querySelector('option[value="upbit"]').textContent = TEXT.tabUpbit;
       baseBoardSelect.querySelector('option[value="bithumb"]').textContent = TEXT.tabBithumb;
@@ -10614,7 +11014,7 @@
       }
 
       function renderCurrentView() {
-        if (state.viewMode === "news" || state.viewMode === "board" || state.viewMode === "ranking") {
+        if (state.viewMode === "news" || state.viewMode === "board" || state.viewMode === "ranking" || state.viewMode === "futures") {
           renderContentPanel();
           return;
         }
@@ -10737,6 +11137,9 @@
           freeBoardFilter,
           rankingCategory,
           rankingQuery,
+          futuresExchange,
+          futuresQuery,
+          futuresPage,
         };
       }
 
@@ -10791,23 +11194,31 @@
           : "tvl";
         rankingQuery = String(payload.rankingQuery || "").slice(0, 80);
         rankingVisibleCount = RANKING_PAGE_SIZE;
+        futuresExchange = ["binance", "coinbase"].includes(payload.futuresExchange)
+          ? String(payload.futuresExchange)
+          : "binance";
+        futuresQuery = String(payload.futuresQuery || "").slice(0, 80);
+        futuresPage = Math.max(1, Math.floor(Number(payload.futuresPage) || 1));
         setViewMode(payload.viewMode, { writeHistory: false });
         isApplyingHistoryState = false;
         saveAppViewState();
       }
 
       function setViewMode(mode, options = {}) {
-        state.viewMode = ["news", "board", "ranking"].includes(mode) ? mode : "market";
+        state.viewMode = ["news", "board", "ranking", "futures"].includes(mode) ? mode : "market";
         const isNewsMode = state.viewMode === "news";
         const isBoardMode = state.viewMode === "board";
         const isRankingMode = state.viewMode === "ranking";
+        const isFuturesMode = state.viewMode === "futures";
         appShell.classList.toggle("news-mode", isNewsMode);
         appShell.classList.toggle("board-mode", isBoardMode);
         appShell.classList.toggle("ranking-mode", isRankingMode);
+        appShell.classList.toggle("futures-mode", isFuturesMode);
         newsToggleBtn.classList.toggle("active", isNewsMode);
         boardToggleBtn.classList.toggle("active", isBoardMode);
         rankingToggleBtn.classList.toggle("active", isRankingMode);
-        if (isNewsMode || isBoardMode || isRankingMode) {
+        futuresToggleBtn.classList.toggle("active", isFuturesMode);
+        if (isNewsMode || isBoardMode || isRankingMode || isFuturesMode) {
           renderContentPanel();
         }
         if (isNewsMode) {
@@ -11219,6 +11630,17 @@
       });
 
       newsPanel.addEventListener("submit", async (event) => {
+        const futuresSearchForm = event.target.closest("#futuresSearchForm");
+        if (futuresSearchForm) {
+          event.preventDefault();
+          const formData = new FormData(futuresSearchForm);
+          futuresQuery = String(formData.get("futuresQuery") || "").trim().slice(0, 80);
+          futuresPage = 1;
+          renderFuturesPanel();
+          writeAppHistoryState(true);
+          return;
+        }
+
         const rankingSearchForm = event.target.closest("#rankingSearchForm");
         if (rankingSearchForm) {
           event.preventDefault();
@@ -11577,6 +11999,35 @@
         if (clickTarget.closest("[data-ranking-more]")) {
           rankingVisibleCount += RANKING_PAGE_SIZE;
           renderRankingPanel();
+          return;
+        }
+
+        const futuresExchangeButton = clickTarget.closest("[data-futures-exchange]");
+        if (futuresExchangeButton) {
+          const nextExchange = String(futuresExchangeButton.dataset.futuresExchange || "");
+          if (["binance", "coinbase"].includes(nextExchange)) {
+            futuresExchange = nextExchange;
+            futuresPage = 1;
+            renderFuturesPanel();
+            writeAppHistoryState(true);
+          }
+          return;
+        }
+
+        if (clickTarget.closest("[data-futures-clear]")) {
+          futuresQuery = "";
+          futuresPage = 1;
+          renderFuturesPanel();
+          writeAppHistoryState(true);
+          return;
+        }
+
+        const futuresPageButton = clickTarget.closest("[data-futures-page]");
+        if (futuresPageButton) {
+          futuresPage = Math.max(1, Math.floor(Number(futuresPageButton.dataset.futuresPage) || 1));
+          renderFuturesPanel();
+          writeAppHistoryState(true);
+          newsPanel.querySelector(".futures-shell")?.scrollIntoView({ block: "start" });
           return;
         }
 
@@ -12047,6 +12498,11 @@
       rankingToggleBtn.addEventListener("click", () => {
         rankingVisibleCount = RANKING_PAGE_SIZE;
         setViewMode("ranking");
+      });
+
+      futuresToggleBtn.addEventListener("click", () => {
+        futuresPage = 1;
+        setViewMode("futures");
       });
 
       window.addEventListener("popstate", (event) => {
