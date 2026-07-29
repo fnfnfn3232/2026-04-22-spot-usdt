@@ -48,7 +48,9 @@ const GITHUB_OIDC_JWKS_URL = `${GITHUB_OIDC_ISSUER}/.well-known/jwks`;
 const GITHUB_OIDC_REPOSITORY = "fnfnfn3232/coin";
 const GITHUB_OIDC_AUDIENCE = "coin-board-auth-market-data";
 const SCREEN_MARKET_BOARDS = ["binance", "upbit", "bithumb", "coinbase"];
+const SCREEN_NAV_ITEMS = ["market", "news", "board", "ranking", "futures"];
 const DEFAULT_SCREEN_SETTINGS = {
+  navOrder: ["market", "news", "board", "ranking", "futures"],
   boardOrder: ["binance", "upbit", "bithumb", "coinbase"],
   statusPosition: "summary",
   visibleStats: {
@@ -524,6 +526,14 @@ function cleanBoardText(value, maxChars) {
 
 function normalizeScreenSettings(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
+  const rawNavOrder = Array.isArray(source.navOrder) ? source.navOrder : DEFAULT_SCREEN_SETTINGS.navOrder;
+  const navOrder = rawNavOrder.filter(
+    (item, index, values) => SCREEN_NAV_ITEMS.includes(item) && values.indexOf(item) === index
+  );
+  SCREEN_NAV_ITEMS.forEach((item) => {
+    if (!navOrder.includes(item)) navOrder.push(item);
+  });
+
   const rawOrder = Array.isArray(source.boardOrder) ? source.boardOrder : DEFAULT_SCREEN_SETTINGS.boardOrder;
   const boardOrder = rawOrder.filter((board) => SCREEN_MARKET_BOARDS.includes(board));
   SCREEN_MARKET_BOARDS.forEach((board) => {
@@ -547,7 +557,7 @@ function normalizeScreenSettings(raw) {
     ? source.statusPosition
     : DEFAULT_SCREEN_SETTINGS.statusPosition;
 
-  return { boardOrder, statusPosition, visibleStats, visibleStatus };
+  return { navOrder, boardOrder, statusPosition, visibleStats, visibleStatus };
 }
 
 function getSafeMediaKind(value) {
