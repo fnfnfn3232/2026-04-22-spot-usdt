@@ -39,6 +39,10 @@ BINANCE_USDM_FUTURES_PRICE_ENDPOINT = "https://www.binance.com/fapi/v1/ticker/pr
 BINANCE_COINM_FUTURES_INFO_ENDPOINT = "https://www.binance.com/dapi/v1/exchangeInfo"
 BINANCE_COINM_FUTURES_PRICE_ENDPOINT = "https://www.binance.com/dapi/v1/ticker/price"
 COINBASE_FUTURES_PRODUCTS_ENDPOINT = "https://api.international.coinbase.com/api/v1/instruments"
+COINGECKO_BINANCE_FUTURES_ENDPOINT = (
+    "https://api.coingecko.com/api/v3/derivatives/exchanges/"
+    "binance_futures?include_tickers=all"
+)
 DEFILLAMA_PROTOCOLS_ENDPOINT = "https://api.llama.fi/protocols"
 DEFILLAMA_FEES_ENDPOINT = (
     "https://api.llama.fi/overview/fees"
@@ -383,7 +387,13 @@ def apply_suspicious_drop_guard(
     return current_rows, None
 
 
-def fetch_json(url: str, *, retries: int = 3, pause: float = 1.0) -> dict | list:
+def fetch_json(
+    url: str,
+    *,
+    retries: int = 3,
+    pause: float = 1.0,
+    timeout: float = 45,
+) -> dict | list:
     last_error = None
     for attempt in range(retries):
         try:
@@ -418,7 +428,7 @@ def fetch_json_post(url: str, payload: object, *, retries: int = 3, pause: float
                     "Content-Type": "application/json",
                 },
             )
-            with urllib.request.urlopen(request, timeout=45) as response:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
                 charset = response.headers.get_content_charset() or "utf-8"
                 return json.loads(response.read().decode(charset))
         except Exception as error:  # noqa: BLE001
@@ -1719,7 +1729,7 @@ def normalize_futures_underlying_symbol(value: object, known_symbols: set[str] |
     return symbol
 
 
-def fetch_binance_futures(known_symbols: set[str] | None = None) -> list[dict]:
+def fetch_binance_futures_official(known_symbols: set[str] | None = None) -> list[dict]:
     rows: list[dict] = []
     sources = (
         (
@@ -1738,8 +1748,8 @@ def fetch_binance_futures(known_symbols: set[str] | None = None) -> list[dict]:
         ),
     )
     for market_key, market_label, info_endpoint, price_endpoint, status_key in sources:
-        info_payload = fetch_json(info_endpoint)
-        price_payload = fetch_json(price_endpoint)
+        info_payload = fetch_json(info_endpoint, retries=1, timeout=8)
+        price_payload = fetch_json(price_endpoint, retries=1, timeout=8)
         symbols = info_payload.get("symbols") if isinstance(info_payload, dict) else []
         prices = price_payload if isinstance(price_payload, list) else []
         price_map = {
@@ -1814,6 +1824,84 @@ def fetch_binance_futures(known_symbols: set[str] | None = None) -> list[dict]:
                 }
             )
     return rows
+
+
+def fetch_binance_futures_coingecko(known_symbols: set[str] | None = None) -> list[dict]:
+    payload = fetch_json(COINGECKO_BINANCE_FUTURES_ENDPOINT)
+    tickers = payload.get("tickers") if isinstance(payload, dict) else []
+    rows: list[dict] = []
+    seen_contracts: set[str] = set()
+    for item in tickers if isinstance(tickers, list) else []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("contract_type") or "").lower() != "perpetual":
+            continue
+        if item.get("expired_at") not in (None, ""):
+            continue
+        contract_id = str(item.get("symbol") or "").upper().strip()
+        raw_underlying = str(item.get("base") or "").upper().strip()
+        underlying = normalize_futures_underlying_symbol(raw_underlying, known_symbols)
+        quote_asset = str(item.get("target") or "USD").upper().strip()
+        if not contract_id or not underlying or contract_id in seen_contracts:
+            continue
+        seen_contracts.add(contract_id)
+        converted_last = item.get("converted_last")
+        converted_last = converted_last if isinstance(converted_last, dict) else {}
+        price_usd = to_float(item.get("last"))
+        if price_usd is None:
+            price_usd = to_float(converted_last.get("usd"))
+        rows.append(
+            {
+                "exchange": "binance",
+                "contractId": contract_id,
+                "symbol": underlying,
+                "rawUnderlyingSymbol": raw_underlying,
+                "pair": contract_id,
+                "name": underlying,
+                "englishName": underlying,
+                "koreanName": underlying,
+                "contractType": "PERPETUAL",
+                "contractTypeLabel": "\ubb34\uae30\ud55c",
+                "contractMarket": (
+                    "\u0055\u0053\u0044\u24c8\u002d\u004d"
+                    if quote_asset in {"USD", "USDT", "USDC"}
+                    else "\u0043\u004f\u0049\u004e\u002d\u004d"
+                ),
+                "quoteAsset": quote_asset,
+                "nativeCurrency": "USD",
+                "priceUsd": price_usd,
+                "priceKrw": price_usd * FX_USD_KRW if price_usd is not None else None,
+                "priceSource": "coingecko_binance_futures_fallback",
+                "marketCapUsd": None,
+                "marketCapKrw": None,
+                "marketCapRank": None,
+                "circulatingSupply": None,
+                "totalSupply": None,
+                "fdvUsd": None,
+                "fdvKrw": None,
+                "circulatingRatio": None,
+                "expiryAt": None,
+                "onboardAt": None,
+                "contractSize": None,
+                "openInterestUsd": to_float(item.get("open_interest_usd")),
+                "capSource": "futures_underlying_missing",
+                "capSourceDetail": "futures_underlying_market_cap_missing",
+                "status": "missing",
+                "riskFlags": [],
+                "nameKeys": list(build_name_keys(underlying, underlying, underlying)),
+            }
+        )
+    return rows
+
+
+def fetch_binance_futures(known_symbols: set[str] | None = None) -> list[dict]:
+    try:
+        rows = fetch_binance_futures_official(known_symbols)
+        if len(rows) >= 100:
+            return rows
+    except Exception:  # noqa: BLE001
+        pass
+    return fetch_binance_futures_coingecko(known_symbols)
 
 
 def fetch_coinbase_futures(known_symbols: set[str] | None = None) -> list[dict]:
