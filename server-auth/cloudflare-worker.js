@@ -91,10 +91,13 @@ function isAllowedOrigin(request, env) {
 }
 
 function jsonResponse(body, status = 200, env = {}) {
-  return new Response(JSON.stringify(body), {
+  const serialized = JSON.stringify(body);
+  const responseBytes = new TextEncoder().encode(serialized).byteLength;
+  return new Response(serialized, {
     status,
     headers: applySecurityHeaders({
       "Content-Type": "application/json; charset=utf-8",
+      "X-Response-Bytes": String(responseBytes),
       "Cache-Control": "no-store",
       "Access-Control-Allow-Origin": env.FRONTEND_ORIGIN || "",
       "Access-Control-Allow-Credentials": "true",
@@ -702,12 +705,28 @@ function getKstMonthKey(now = Date.now()) {
   return getKstDateKey(now).slice(0, 7);
 }
 
+function getKstHourKey(now = Date.now()) {
+  return new Date(now + 9 * 60 * 60 * 1000).toISOString().slice(0, 13);
+}
+
+function getKstWeekKey(now = Date.now()) {
+  const date = new Date(now + 9 * 60 * 60 * 1000);
+  const day = date.getUTCDay();
+  date.setUTCDate(date.getUTCDate() - ((day + 6) % 7));
+  return date.toISOString().slice(0, 10);
+}
+
 function normalizeUsageStats(raw) {
   return {
     months: raw && typeof raw.months === "object" && raw.months ? raw.months : {},
     days: raw && typeof raw.days === "object" && raw.days ? raw.days : {},
+    hours: raw && typeof raw.hours === "object" && raw.hours ? raw.hours : {},
     totalViews: Math.max(0, Math.floor(Number(raw?.totalViews) || 0)),
     totalBytes: Math.max(0, Math.floor(Number(raw?.totalBytes) || 0)),
+    totalApiBytes: Math.max(0, Math.floor(Number(raw?.totalApiBytes) || 0)),
+    totalApiRequests: Math.max(0, Math.floor(Number(raw?.totalApiRequests) || 0)),
+    totalMediaBytes: Math.max(0, Math.floor(Number(raw?.totalMediaBytes) || 0)),
+    totalMediaRequests: Math.max(0, Math.floor(Number(raw?.totalMediaRequests) || 0)),
     firstSeen: Math.max(0, Math.floor(Number(raw?.firstSeen) || 0)),
     lastSeen: Math.max(0, Math.floor(Number(raw?.lastSeen) || 0)),
   };
@@ -718,14 +737,98 @@ function normalizeUsageBucket(bucket) {
     views: Math.max(0, Math.floor(Number(bucket?.views) || 0)),
     bytes: Math.max(0, Math.floor(Number(bucket?.bytes) || 0)),
     samples: Math.max(0, Math.floor(Number(bucket?.samples) || 0)),
+    apiBytes: Math.max(0, Math.floor(Number(bucket?.apiBytes) || 0)),
+    apiRequests: Math.max(0, Math.floor(Number(bucket?.apiRequests) || 0)),
+    mediaBytes: Math.max(0, Math.floor(Number(bucket?.mediaBytes) || 0)),
+    mediaRequests: Math.max(0, Math.floor(Number(bucket?.mediaRequests) || 0)),
     lastSeen: Math.max(0, Math.floor(Number(bucket?.lastSeen) || 0)),
   };
 }
 
+function addUsageBuckets(target, source) {
+  const next = normalizeUsageBucket(target);
+  const item = normalizeUsageBucket(source);
+  next.views += item.views;
+  next.bytes += item.bytes;
+  next.samples += item.samples;
+  next.apiBytes += item.apiBytes;
+  next.apiRequests += item.apiRequests;
+  next.mediaBytes += item.mediaBytes;
+  next.mediaRequests += item.mediaRequests;
+  next.lastSeen = Math.max(next.lastSeen, item.lastSeen);
+  return next;
+}
+
+function buildUsageSeries(stats, now = Date.now()) {
+  const hours = [];
+  for (let offset = 23; offset >= 0; offset -= 1) {
+    const key = getKstHourKey(now - offset * 60 * 60 * 1000);
+    hours.push({ key, ...normalizeUsageBucket(stats.hours[key]) });
+  }
+
+  const days = [];
+  for (let offset = 13; offset >= 0; offset -= 1) {
+    const key = getKstDateKey(now - offset * 24 * 60 * 60 * 1000);
+    days.push({ key, ...normalizeUsageBucket(stats.days[key]) });
+  }
+
+  const weekKeys = [];
+  for (let offset = 11; offset >= 0; offset -= 1) {
+    weekKeys.push(getKstWeekKey(now - offset * 7 * 24 * 60 * 60 * 1000));
+  }
+  const weekMap = Object.fromEntries(weekKeys.map((key) => [key, normalizeUsageBucket()]));
+  Object.entries(stats.days).forEach(([key, bucket]) => {
+    const timestamp = Date.parse(`${key}T00:00:00Z`);
+    if (!Number.isFinite(timestamp)) return;
+    const weekKey = getKstWeekKey(timestamp - 9 * 60 * 60 * 1000);
+    if (weekMap[weekKey]) weekMap[weekKey] = addUsageBuckets(weekMap[weekKey], bucket);
+  });
+  const weeks = weekKeys.map((key) => ({ key, ...weekMap[key] }));
+
+  const monthKeys = [];
+  for (let offset = 11; offset >= 0; offset -= 1) {
+    const date = new Date(now + 9 * 60 * 60 * 1000);
+    date.setUTCMonth(date.getUTCMonth() - offset);
+    monthKeys.push(date.toISOString().slice(0, 7));
+  }
+  const months = monthKeys.map((key) => ({ key, ...normalizeUsageBucket(stats.months[key]) }));
+  return { hours, days, weeks, months };
+}
+
+function pruneUsageStats(stats, now = Date.now()) {
+  const monthKeep = new Set();
+  for (let offset = 0; offset < 18; offset += 1) {
+    const date = new Date(now + 9 * 60 * 60 * 1000);
+    date.setUTCMonth(date.getUTCMonth() - offset);
+    monthKeep.add(date.toISOString().slice(0, 7));
+  }
+  Object.keys(stats.months).forEach((key) => {
+    if (!monthKeep.has(key)) delete stats.months[key];
+  });
+
+  const dayKeep = new Set();
+  for (let offset = 0; offset < 120; offset += 1) {
+    dayKeep.add(getKstDateKey(now - offset * 24 * 60 * 60 * 1000));
+  }
+  Object.keys(stats.days).forEach((key) => {
+    if (!dayKeep.has(key)) delete stats.days[key];
+  });
+
+  const hourKeep = new Set();
+  for (let offset = 0; offset < 14 * 24; offset += 1) {
+    hourKeep.add(getKstHourKey(now - offset * 60 * 60 * 1000));
+  }
+  Object.keys(stats.hours).forEach((key) => {
+    if (!hourKeep.has(key)) delete stats.hours[key];
+  });
+  return stats;
+}
+
 function publicUsageStats(raw) {
   const stats = normalizeUsageStats(raw);
-  const monthKey = getKstMonthKey();
-  const dayKey = getKstDateKey();
+  const now = Date.now();
+  const monthKey = getKstMonthKey(now);
+  const dayKey = getKstDateKey(now);
   const month = normalizeUsageBucket(stats.months[monthKey]);
   const day = normalizeUsageBucket(stats.days[dayKey]);
   return {
@@ -736,9 +839,15 @@ function publicUsageStats(raw) {
     today: day,
     totalViews: stats.totalViews,
     totalBytes: stats.totalBytes,
+    totalApiBytes: stats.totalApiBytes,
+    totalApiRequests: stats.totalApiRequests,
+    totalMediaBytes: stats.totalMediaBytes,
+    totalMediaRequests: stats.totalMediaRequests,
+    totalMeasuredBytes: stats.totalBytes + stats.totalApiBytes + stats.totalMediaBytes,
     firstSeen: stats.firstSeen,
     lastSeen: stats.lastSeen,
-    note: "브라우저 Performance API 기반 추정치입니다. GitHub Pages 공식 청구/집계값은 아닙니다.",
+    series: buildUsageSeries(stats, now),
+    note: "페이지 전송은 브라우저 측정값이며, API와 첨부파일은 Worker가 응답 크기를 기록합니다. GitHub Pages 공식 청구/집계값은 아닙니다.",
   };
 }
 
@@ -1895,9 +2004,11 @@ export class BoardStore {
     const now = Date.now();
     const monthKey = getKstMonthKey(now);
     const dayKey = getKstDateKey(now);
+    const hourKey = getKstHourKey(now);
     const stats = await this.readUsageStats();
     stats.months[monthKey] = normalizeUsageBucket(stats.months[monthKey]);
     stats.days[dayKey] = normalizeUsageBucket(stats.days[dayKey]);
+    stats.hours[hourKey] = normalizeUsageBucket(stats.hours[hourKey]);
     stats.months[monthKey].views += 1;
     stats.months[monthKey].samples += bytes > 0 ? 1 : 0;
     stats.months[monthKey].bytes += bytes;
@@ -1906,31 +2017,60 @@ export class BoardStore {
     stats.days[dayKey].samples += bytes > 0 ? 1 : 0;
     stats.days[dayKey].bytes += bytes;
     stats.days[dayKey].lastSeen = now;
+    stats.hours[hourKey].views += 1;
+    stats.hours[hourKey].samples += bytes > 0 ? 1 : 0;
+    stats.hours[hourKey].bytes += bytes;
+    stats.hours[hourKey].lastSeen = now;
     stats.totalViews += 1;
     stats.totalBytes += bytes;
     stats.firstSeen = stats.firstSeen || now;
     stats.lastSeen = now;
 
-    const monthKeep = new Set();
-    for (let offset = 0; offset < 18; offset += 1) {
-      const date = new Date(now + 9 * 60 * 60 * 1000);
-      date.setUTCMonth(date.getUTCMonth() - offset);
-      monthKeep.add(date.toISOString().slice(0, 7));
-    }
-    Object.keys(stats.months).forEach((key) => {
-      if (!monthKeep.has(key)) delete stats.months[key];
-    });
-    const dayKeep = new Set();
-    for (let offset = 0; offset < 120; offset += 1) {
-      const date = new Date(now + 9 * 60 * 60 * 1000);
-      date.setUTCDate(date.getUTCDate() - offset);
-      dayKeep.add(date.toISOString().slice(0, 10));
-    }
-    Object.keys(stats.days).forEach((key) => {
-      if (!dayKeep.has(key)) delete stats.days[key];
-    });
+    return this.writeUsageStats(pruneUsageStats(stats, now));
+  }
 
-    return this.writeUsageStats(stats);
+  async recordServerTransfer(kind, bytesValue) {
+    const bytes = Math.max(0, Math.floor(Number(bytesValue) || 0));
+    if (!bytes) return this.readUsageStats();
+    const isMedia = kind === "media";
+    const now = Date.now();
+    const monthKey = getKstMonthKey(now);
+    const dayKey = getKstDateKey(now);
+    const hourKey = getKstHourKey(now);
+    const stats = await this.readUsageStats();
+    stats.months[monthKey] = normalizeUsageBucket(stats.months[monthKey]);
+    stats.days[dayKey] = normalizeUsageBucket(stats.days[dayKey]);
+    stats.hours[hourKey] = normalizeUsageBucket(stats.hours[hourKey]);
+    [stats.months[monthKey], stats.days[dayKey], stats.hours[hourKey]].forEach((bucket) => {
+      if (isMedia) {
+        bucket.mediaBytes += bytes;
+        bucket.mediaRequests += 1;
+      } else {
+        bucket.apiBytes += bytes;
+        bucket.apiRequests += 1;
+      }
+      bucket.lastSeen = now;
+    });
+    if (isMedia) {
+      stats.totalMediaBytes += bytes;
+      stats.totalMediaRequests += 1;
+    } else {
+      stats.totalApiBytes += bytes;
+      stats.totalApiRequests += 1;
+    }
+    stats.firstSeen = stats.firstSeen || now;
+    stats.lastSeen = now;
+    return this.writeUsageStats(pruneUsageStats(stats, now));
+  }
+
+  async recordMediaDownload(bytesValue) {
+    return this.recordServerTransfer("media", bytesValue);
+  }
+
+  async recordApiResponse(response) {
+    const bytes = Math.max(0, Math.floor(Number(response?.headers?.get("X-Response-Bytes")) || 0));
+    if (bytes) await this.recordServerTransfer("api", bytes);
+    return response;
   }
 
   async readMedia(id) {
@@ -2272,7 +2412,9 @@ export class BoardStore {
       if (providedPassword && !await isAdminPassword(providedPassword, this.env)) {
         return jsonResponse({ error: "invalid_password" }, 401, this.env);
       }
-      return jsonResponse({ usage: publicUsageStats(await this.readUsageStats()) }, 200, this.env);
+      return this.recordApiResponse(
+        jsonResponse({ usage: publicUsageStats(await this.readUsageStats()) }, 200, this.env)
+      );
     }
 
     if (isProtectedContentPath(url)) {
@@ -2282,7 +2424,7 @@ export class BoardStore {
 
     if (url.pathname === "/api/screen-settings") {
       if (request.method === "GET") {
-        return jsonResponse(await this.readScreenSettingsRecord(), 200, this.env);
+        return this.recordApiResponse(jsonResponse(await this.readScreenSettingsRecord(), 200, this.env));
       }
       if (request.method === "PUT" || request.method === "POST") {
         const body = await parseJsonBody(request);
@@ -2294,15 +2436,15 @@ export class BoardStore {
     }
 
     if (request.method === "GET" && url.pathname === "/api/market-data") {
-      return this.handleMarketDataRequest(request, url);
+      return this.recordApiResponse(await this.handleMarketDataRequest(request, url));
     }
 
     if (request.method === "GET" && url.pathname === "/api/live-prices") {
-      return this.handleLivePricesRequest(request, url);
+      return this.recordApiResponse(await this.handleLivePricesRequest(request, url));
     }
 
     if (request.method === "GET" && url.pathname === "/api/news") {
-      return this.handleNewsRequest(request, url);
+      return this.recordApiResponse(await this.handleNewsRequest(request, url));
     }
 
     if (request.method === "POST" && url.pathname === "/api/usage/beacon") {
@@ -2321,7 +2463,9 @@ export class BoardStore {
 
     if (url.pathname === "/api/board/categories") {
       if (request.method === "GET") {
-        return jsonResponse({ categories: await this.readCategories() }, 200, this.env);
+        return this.recordApiResponse(
+          jsonResponse({ categories: await this.readCategories() }, 200, this.env)
+        );
       }
       if (request.method === "PUT" || request.method === "POST") {
         const body = await parseJsonBody(request);
@@ -2353,11 +2497,13 @@ export class BoardStore {
       const id = decodeURIComponent(url.pathname.split("/").pop() || "");
       const media = await this.readMedia(id);
       if (!media) return jsonResponse({ error: "not_found" }, 404, this.env);
+      const mediaSize = Math.max(0, Math.floor(Number(media.size) || Number(media.bytes?.byteLength) || 0));
+      if (mediaSize) await this.recordMediaDownload(mediaSize);
       return mediaResponse(media, 200, this.env);
     }
 
     if (request.method === "GET" && url.pathname === "/api/board/posts") {
-      return boardJsonResponse(await this.readPosts(), 200, this.env);
+      return this.recordApiResponse(boardJsonResponse(await this.readPosts(), 200, this.env));
     }
 
     if (request.method === "POST" && url.pathname === "/api/board/posts") {

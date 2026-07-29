@@ -347,6 +347,119 @@
       margin-bottom: 14px;
     }
 
+    .admin-traffic-detail {
+      padding: 16px 0 18px;
+      margin-bottom: 14px;
+      border-top: 1px solid rgba(151, 183, 198, 0.16);
+      border-bottom: 1px solid rgba(151, 183, 198, 0.16);
+    }
+
+    .admin-traffic-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .admin-traffic-title {
+      margin: 0;
+      color: #eaf7fc;
+      font-size: 16px;
+      font-weight: 850;
+    }
+
+    .admin-traffic-note {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .admin-traffic-ranges {
+      display: inline-flex;
+      gap: 4px;
+      padding: 3px;
+      border: 1px solid rgba(151, 183, 198, 0.16);
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .admin-traffic-range {
+      min-height: 34px;
+      padding: 0 12px;
+      border: 0;
+      background: transparent;
+      color: #a8bfca;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .admin-traffic-range.is-active {
+      background: rgba(55, 209, 255, 0.13);
+      color: #75ddff;
+    }
+
+    .admin-traffic-table-wrap {
+      overflow-x: auto;
+    }
+
+    .admin-traffic-table {
+      width: 100%;
+      min-width: 720px;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    .admin-traffic-table th,
+    .admin-traffic-table td {
+      padding: 9px 8px;
+      border-bottom: 1px solid rgba(151, 183, 198, 0.1);
+      color: #d6edf7;
+      font-size: 12px;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .admin-traffic-table th {
+      color: var(--muted);
+      font-weight: 750;
+    }
+
+    .admin-traffic-table th:first-child,
+    .admin-traffic-table td:first-child {
+      width: 28%;
+      text-align: left;
+    }
+
+    .admin-traffic-table tbody tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .admin-traffic-period {
+      display: grid;
+      gap: 6px;
+    }
+
+    .admin-traffic-bar {
+      width: 100%;
+      height: 3px;
+      background: rgba(151, 183, 198, 0.1);
+    }
+
+    .admin-traffic-bar > span {
+      display: block;
+      width: var(--traffic-percent, 0%);
+      height: 100%;
+      background: #37d1ff;
+    }
+
+    .admin-traffic-empty {
+      padding: 20px 8px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }
+
     .admin-stat,
     .admin-section {
       border: 1px solid rgba(151, 183, 198, 0.16);
@@ -3995,6 +4108,22 @@
           grid-template-columns: 1fr;
         }
 
+        .admin-traffic-head {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .admin-traffic-ranges {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          width: 100%;
+        }
+
+        .admin-traffic-range {
+          min-width: 0;
+          padding: 0 6px;
+        }
+
         .free-board-rich-toolbar {
           align-items: stretch;
         }
@@ -4526,6 +4655,35 @@
         color: var(--muted);
       }
 
+      .admin-traffic-detail,
+      .admin-traffic-table th,
+      .admin-traffic-table td {
+        border-color: var(--line);
+      }
+
+      .admin-traffic-title,
+      .admin-traffic-table td {
+        color: var(--text);
+      }
+
+      .admin-traffic-ranges {
+        border-color: var(--line);
+        background: #f7f9fa;
+      }
+
+      .admin-traffic-range {
+        color: #607580;
+      }
+
+      .admin-traffic-range.is-active {
+        background: #dff6fd;
+        color: #006c90;
+      }
+
+      .admin-traffic-bar {
+        background: #e4edf1;
+      }
+
       .admin-close,
       .admin-refresh {
         border-color: var(--line);
@@ -4753,7 +4911,7 @@
             <button class="admin-close" id="adminCloseBtn" type="button">닫기</button>
           </div>
         </div>
-        <div class="admin-note">트래픽은 방문자 브라우저가 전송량을 Cloudflare Worker에 보고하고 서버에 누적 저장한 추정치입니다. GitHub 공식 청구값은 아니며, 외부 이미지와 유튜브 재생량은 포함하지 않습니다.</div>
+        <div class="admin-note">페이지 전송량은 방문자 브라우저의 측정값이며, 서버 API와 첨부파일은 Worker가 응답 크기를 기록합니다. GitHub 공식 청구값은 아니며 외부 이미지와 유튜브 재생량은 포함하지 않습니다.</div>
         <div class="admin-grid">
           <article class="admin-stat">
             <div class="admin-stat-label">오늘 방문</div>
@@ -4781,6 +4939,23 @@
             <div class="admin-stat-sub" id="adminDataGenerated">-</div>
           </article>
         </div>
+        <section class="admin-traffic-detail">
+          <div class="admin-traffic-head">
+            <div>
+              <h3 class="admin-traffic-title">트래픽 상세</h3>
+              <p class="admin-traffic-note" id="adminTrafficDetailNote">기간별 서버 기록을 불러오는 중입니다.</p>
+            </div>
+            <div class="admin-traffic-ranges" id="adminTrafficRangeControls" aria-label="트래픽 조회 기간">
+              <button class="admin-traffic-range is-active" type="button" data-admin-traffic-range="hours" aria-pressed="true">시간별</button>
+              <button class="admin-traffic-range" type="button" data-admin-traffic-range="days" aria-pressed="false">일별</button>
+              <button class="admin-traffic-range" type="button" data-admin-traffic-range="weeks" aria-pressed="false">주별</button>
+              <button class="admin-traffic-range" type="button" data-admin-traffic-range="months" aria-pressed="false">월별</button>
+            </div>
+          </div>
+          <div id="adminTrafficDetails">
+            <div class="admin-traffic-empty">서버 통계를 불러오는 중입니다.</div>
+          </div>
+        </section>
         <div class="admin-sections">
           <section class="admin-section">
             <h3 class="admin-section-title">데이터 관리</h3>
@@ -4884,7 +5059,7 @@
   </script>
   <script>
     const SITE_PASSWORD = "";
-    const ADMIN_BUILD_VERSION = "admin-verify-2026-06-30-2318";
+    const ADMIN_BUILD_VERSION = "admin-traffic-2026-07-29";
     const LOCK_AUTH_UNTIL_KEY = "fdv_lock_until_server_v1";
     const LOCK_EXTEND_COUNT_KEY = "fdv_lock_extend_count_server_v1";
     const SERVER_AUTH_TOKEN_KEY = "fdv_server_auth_token_v1";
@@ -5197,6 +5372,9 @@
       const adminFirstSeen = document.getElementById("adminFirstSeen");
       const adminPagesUsage = document.getElementById("adminPagesUsage");
       const adminPagesUsageSub = document.getElementById("adminPagesUsageSub");
+      const adminTrafficRangeControls = document.getElementById("adminTrafficRangeControls");
+      const adminTrafficDetails = document.getElementById("adminTrafficDetails");
+      const adminTrafficDetailNote = document.getElementById("adminTrafficDetailNote");
       const adminDataAge = document.getElementById("adminDataAge");
       const adminDataGenerated = document.getElementById("adminDataGenerated");
       const adminDataStats = document.getElementById("adminDataStats");
@@ -5871,6 +6049,7 @@
       let adminServerPassword = "";
       let serverUsageStats = null;
       let serverUsageError = "";
+      let adminTrafficRange = "hours";
 
       function showFreeBoardMessage(message, isError = false) {
         freeBoardMessage = String(message || "");
@@ -8443,6 +8622,105 @@
         return Math.min(999, (used / limit) * 100);
       }
 
+      function formatAdminTrafficPeriod(key, range) {
+        const value = String(key || "");
+        if (range === "hours") {
+          const [date, hour = "00"] = value.split("T");
+          return `${date.slice(5).replace("-", ".")} ${hour}시`;
+        }
+        if (range === "days") return value.slice(5).replace("-", ".");
+        if (range === "weeks") return `${value.slice(5).replace("-", ".")} 시작`;
+        if (range === "months") return value.replace("-", ".");
+        return value;
+      }
+
+      function renderAdminTrafficDetails() {
+        if (!adminTrafficDetails || !adminTrafficRangeControls) return;
+        adminTrafficRangeControls.querySelectorAll("[data-admin-traffic-range]").forEach((button) => {
+          const active = button.dataset.adminTrafficRange === adminTrafficRange;
+          button.classList.toggle("is-active", active);
+          button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+
+        const usage = serverUsageStats;
+        const rows = Array.isArray(usage?.series?.[adminTrafficRange])
+          ? usage.series[adminTrafficRange]
+          : [];
+        if (!rows.length) {
+          const empty = document.createElement("div");
+          empty.className = "admin-traffic-empty";
+          empty.textContent = serverUsageError || "아직 이 기간의 서버 기록이 없습니다.";
+          adminTrafficDetails.replaceChildren(empty);
+          if (adminTrafficDetailNote) adminTrafficDetailNote.textContent = "관리자 인증 후 기간별 기록을 확인할 수 있습니다.";
+          return;
+        }
+
+        const notes = {
+          hours: "최근 24시간 · 시간별 상세 기록은 이번 배포 이후부터 누적됩니다.",
+          days: "최근 14일 · 기존 일별 방문과 페이지 전송 기록을 유지합니다.",
+          weeks: "최근 12주 · 일별 기록을 월요일 기준으로 합산합니다.",
+          months: "최근 12개월 · 기존 월별 방문과 페이지 전송 기록을 유지합니다.",
+        };
+        if (adminTrafficDetailNote) adminTrafficDetailNote.textContent = notes[adminTrafficRange] || "";
+
+        const maxBytes = Math.max(1, ...rows.map((row) => (
+          Math.max(0, Number(row?.bytes) || 0)
+          + Math.max(0, Number(row?.apiBytes) || 0)
+          + Math.max(0, Number(row?.mediaBytes) || 0)
+        )));
+        const wrap = document.createElement("div");
+        wrap.className = "admin-traffic-table-wrap";
+        const table = document.createElement("table");
+        table.className = "admin-traffic-table";
+        const head = document.createElement("thead");
+        const headRow = document.createElement("tr");
+        ["기간", "방문", "페이지 전송", "서버 API", "첨부파일", "합계"].forEach((label) => {
+          const cell = document.createElement("th");
+          cell.scope = "col";
+          cell.textContent = label;
+          headRow.append(cell);
+        });
+        head.append(headRow);
+
+        const body = document.createElement("tbody");
+        rows.forEach((row) => {
+          const pageBytes = Math.max(0, Number(row?.bytes) || 0);
+          const apiBytes = Math.max(0, Number(row?.apiBytes) || 0);
+          const mediaBytes = Math.max(0, Number(row?.mediaBytes) || 0);
+          const totalBytes = pageBytes + apiBytes + mediaBytes;
+          const tableRow = document.createElement("tr");
+          const periodCell = document.createElement("td");
+          const period = document.createElement("div");
+          period.className = "admin-traffic-period";
+          const label = document.createElement("span");
+          label.textContent = formatAdminTrafficPeriod(row?.key, adminTrafficRange);
+          const bar = document.createElement("span");
+          bar.className = "admin-traffic-bar";
+          const barValue = document.createElement("span");
+          barValue.style.setProperty("--traffic-percent", `${Math.max(0, Math.min(100, totalBytes / maxBytes * 100))}%`);
+          bar.append(barValue);
+          period.append(label, bar);
+          periodCell.append(period);
+          tableRow.append(periodCell);
+
+          [
+            `${formatNumber(Math.max(0, Number(row?.views) || 0), 0)}회`,
+            formatBytes(pageBytes),
+            `${formatBytes(apiBytes)} · ${formatNumber(Math.max(0, Number(row?.apiRequests) || 0), 0)}회`,
+            `${formatBytes(mediaBytes)} · ${formatNumber(Math.max(0, Number(row?.mediaRequests) || 0), 0)}회`,
+            formatBytes(totalBytes),
+          ].forEach((value) => {
+            const cell = document.createElement("td");
+            cell.textContent = value;
+            tableRow.append(cell);
+          });
+          body.append(tableRow);
+        });
+        table.append(head, body);
+        wrap.append(table);
+        adminTrafficDetails.replaceChildren(wrap);
+      }
+
       function updateAdminUsageSummary() {
         if (!adminPagesUsage || !adminPagesUsageSub) return;
         const usage = serverUsageStats;
@@ -8456,27 +8734,39 @@
           adminFirstSeen.textContent = statusText;
           adminPagesUsage.textContent = serverUsageError ? "확인 실패" : "-";
           adminPagesUsageSub.textContent = statusText;
+          renderAdminTrafficDetails();
           return;
         }
         const todayViews = Math.max(0, Math.floor(Number(usage.today?.views) || 0));
         const todayBytes = Number(usage.today?.bytes) || 0;
+        const todayApiBytes = Number(usage.today?.apiBytes) || 0;
+        const todayMediaBytes = Number(usage.today?.mediaBytes) || 0;
         const monthViews = Math.max(0, Math.floor(Number(usage.month?.views) || 0));
         const monthBytes = Number(usage.month?.bytes) || 0;
+        const monthApiBytes = Number(usage.month?.apiBytes) || 0;
+        const monthMediaBytes = Number(usage.month?.mediaBytes) || 0;
         const totalViews = Math.max(0, Math.floor(Number(usage.totalViews) || 0));
         const totalBytes = Number(usage.totalBytes) || 0;
+        const totalApiBytes = Number(usage.totalApiBytes) || 0;
+        const totalMediaBytes = Number(usage.totalMediaBytes) || 0;
         adminDailyTraffic.textContent = `${formatNumber(todayViews, 0)}회`;
-        if (adminDailyTrafficSub) adminDailyTrafficSub.textContent = `오늘 전송량 ${formatBytes(todayBytes)}`;
+        if (adminDailyTrafficSub) {
+          adminDailyTrafficSub.textContent = `페이지 ${formatBytes(todayBytes)} · API ${formatBytes(todayApiBytes)} · 첨부 ${formatBytes(todayMediaBytes)}`;
+        }
         adminMonthlyTraffic.textContent = `${formatNumber(monthViews, 0)}회`;
-        if (adminMonthlyTrafficSub) adminMonthlyTrafficSub.textContent = `${usage.monthKey || "이번 달"} 전송량 ${formatBytes(monthBytes)}`;
+        if (adminMonthlyTrafficSub) {
+          adminMonthlyTrafficSub.textContent = `페이지 ${formatBytes(monthBytes)} · API ${formatBytes(monthApiBytes)} · 첨부 ${formatBytes(monthMediaBytes)}`;
+        }
         adminTotalTraffic.textContent = `${formatNumber(totalViews, 0)}회`;
         adminFirstSeen.textContent = usage.firstSeen
-          ? `첫 서버 기록 ${formatLocalDateTimeMs(usage.firstSeen)} · 누적 ${formatBytes(totalBytes)}`
-          : `누적 ${formatBytes(totalBytes)}`;
+          ? `첫 기록 ${formatLocalDateTimeMs(usage.firstSeen)} · 측정 ${formatBytes(totalBytes + totalApiBytes + totalMediaBytes)}`
+          : `누적 측정 ${formatBytes(totalBytes + totalApiBytes + totalMediaBytes)}`;
         const bytes = monthBytes;
         const limit = Number(usage.monthlySoftLimitBytes) || 100 * 1024 * 1024 * 1024;
         const percent = getUsagePercent(bytes, limit);
         adminPagesUsage.textContent = `${formatBytes(bytes)} / ${formatBytes(limit)}`;
-        adminPagesUsageSub.textContent = `${usage.monthKey || "이번 달"} · ${formatNumber(percent, 3)}% · 방문 ${formatNumber(usage.month?.views || 0, 0)}회`;
+        adminPagesUsageSub.textContent = `GitHub Pages 추정 · ${formatNumber(percent, 3)}% · 첨부파일 별도`;
+        renderAdminTrafficDetails();
       }
 
       async function fetchServerUsageStats(password = adminServerPassword) {
@@ -8674,11 +8964,15 @@
         const loadMs = navEntry ? Math.max(0, Math.round(navEntry.loadEventEnd - navEntry.startTime)) : 0;
         const usage = serverUsageStats;
         const usageRows = usage ? [
-          ["월 추정 전송량", `${formatBytes(usage.month?.bytes || 0)} / ${formatBytes(usage.monthlySoftLimitBytes || 100 * 1024 * 1024 * 1024)}`],
+          ["월 페이지 전송량", `${formatBytes(usage.month?.bytes || 0)} / ${formatBytes(usage.monthlySoftLimitBytes || 100 * 1024 * 1024 * 1024)}`],
+          ["월 서버 API 전송량", `${formatBytes(usage.month?.apiBytes || 0)} · ${formatNumber(usage.month?.apiRequests || 0, 0)}회`],
+          ["월 첨부파일 전송량", `${formatBytes(usage.month?.mediaBytes || 0)} · ${formatNumber(usage.month?.mediaRequests || 0, 0)}회`],
           ["월 사용률", `${formatNumber(getUsagePercent(usage.month?.bytes || 0, usage.monthlySoftLimitBytes), 3)}% (${usage.monthKey || "이번 달"})`],
-          ["월 추정 방문", `${formatNumber(usage.month?.views || 0, 0)}회`],
-          ["오늘 추정 전송량", `${formatBytes(usage.today?.bytes || 0)} · ${formatNumber(usage.today?.views || 0, 0)}회`],
-          ["추정 기준", "전체 방문자 브라우저 전송량 서버 누적"],
+          ["월 방문", `${formatNumber(usage.month?.views || 0, 0)}회`],
+          ["오늘 전송량", `페이지 ${formatBytes(usage.today?.bytes || 0)} · API ${formatBytes(usage.today?.apiBytes || 0)} · 첨부 ${formatBytes(usage.today?.mediaBytes || 0)}`],
+          ["누적 서버 API", `${formatBytes(usage.totalApiBytes || 0)} · ${formatNumber(usage.totalApiRequests || 0, 0)}회`],
+          ["누적 첨부파일", `${formatBytes(usage.totalMediaBytes || 0)} · ${formatNumber(usage.totalMediaRequests || 0, 0)}회`],
+          ["측정 기준", "페이지는 브라우저 보고 · 첨부파일은 보호된 다운로드 요청"],
         ] : [
           ["월 추정 전송량", serverUsageError || "관리자 인증 후 불러오는 중"],
         ];
@@ -9042,6 +9336,14 @@
       adminAuthCloseBtn.addEventListener("click", closeAdminModal);
       adminCancelBtn.addEventListener("click", closeAdminModal);
       adminCloseBtn.addEventListener("click", closeAdminModal);
+      adminTrafficRangeControls?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-admin-traffic-range]");
+        if (!button || !adminTrafficRangeControls.contains(button)) return;
+        const range = String(button.dataset.adminTrafficRange || "");
+        if (!["hours", "days", "weeks", "months"].includes(range)) return;
+        adminTrafficRange = range;
+        renderAdminTrafficDetails();
+      });
       adminRefreshBtn.addEventListener("click", () => {
         renderAdminDashboard();
         fetchServerUsageStats(adminServerPassword)
