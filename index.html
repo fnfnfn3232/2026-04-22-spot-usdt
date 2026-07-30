@@ -1381,20 +1381,27 @@
       }
 
       .futures-contract {
-        width: 25%;
+        width: 21%;
       }
 
       .futures-underlying {
-        width: 18%;
+        width: 14%;
       }
 
       .futures-type {
-        width: 15%;
+        width: 12%;
       }
 
-      .futures-price,
+      .futures-price {
+        width: 14%;
+      }
+
       .futures-cap {
         width: 17%;
+      }
+
+      .futures-listings {
+        width: 18%;
       }
 
       .futures-expiry {
@@ -1422,6 +1429,28 @@
         color: var(--muted);
         font-size: 12px;
         line-height: 1.45;
+      }
+
+      .futures-exchange-list {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+
+      .futures-listings .futures-exchange-badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        margin: 0;
+        padding: 3px 7px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: var(--chip);
+        color: var(--text);
+        font-size: 11px;
+        font-weight: 750;
+        line-height: 1.2;
       }
 
       .futures-pages {
@@ -3784,6 +3813,7 @@
         .futures-type,
         .futures-price,
         .futures-cap,
+        .futures-listings,
         .futures-expiry {
           margin-top: 8px;
         }
@@ -8541,10 +8571,50 @@
         return exchange === "coinbase" ? "코인베이스 선물" : "바이낸스 선물";
       }
 
+      const FUTURES_SPOT_EXCHANGES = [
+        ["upbit", "업비트"],
+        ["bithumb", "빗썸"],
+        ["binance", "바이낸스"],
+        ["coinbase", "코인베이스"],
+      ];
+
+      function normalizedListingSymbols(row) {
+        return [...new Set([
+          row?.symbol,
+          row?.compareSymbol,
+          row?.symbolAliasOf,
+          row?.rawUnderlyingSymbol,
+        ].map((value) => String(value || "").trim().toUpperCase()).filter(Boolean))];
+      }
+
+      function buildSpotListingLookup() {
+        const lookup = new Map();
+        FUTURES_SPOT_EXCHANGES.forEach(([exchange]) => {
+          const rows = Array.isArray(data.boards?.[exchange]) ? data.boards[exchange] : [];
+          rows.forEach((row) => {
+            normalizedListingSymbols(row).forEach((symbol) => {
+              if (!lookup.has(symbol)) lookup.set(symbol, new Set());
+              lookup.get(symbol).add(exchange);
+            });
+          });
+        });
+        return lookup;
+      }
+
+      function futuresSpotListings(row, lookup) {
+        const exchangeKeys = new Set();
+        normalizedListingSymbols(row).forEach((symbol) => {
+          const matches = lookup.get(symbol);
+          if (matches) matches.forEach((exchange) => exchangeKeys.add(exchange));
+        });
+        return FUTURES_SPOT_EXCHANGES.filter(([exchange]) => exchangeKeys.has(exchange));
+      }
+
       function renderFuturesPanel() {
         if (!["binance", "coinbase"].includes(futuresExchange)) {
           futuresExchange = "binance";
         }
+        const spotListingLookup = buildSpotListingLookup();
         const allRows = Array.isArray(data.futures?.[futuresExchange])
           ? data.futures[futuresExchange]
           : [];
@@ -8621,6 +8691,7 @@
                       <th class="futures-type">구분</th>
                       <th class="futures-price">선물 가격</th>
                       <th class="futures-cap">기초자산 시총 ${futuresSortDirection === "asc" ? "↑" : "↓"}</th>
+                      <th class="futures-listings">상장 거래소</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -8628,6 +8699,12 @@
                       const price = priceDisplay(row);
                       const cap = capDisplay(row);
                       const rank = start + index + 1;
+                      const spotListings = futuresSpotListings(row, spotListingLookup);
+                      const spotListingsMarkup = spotListings.length
+                        ? `<div class="futures-exchange-list" aria-label="현물 상장 거래소">
+                            ${spotListings.map(([_exchange, label]) => `<span class="futures-exchange-badge">${escapeHtml(label)}</span>`).join("")}
+                          </div>`
+                        : "-";
                       return `
                         <tr>
                           <td class="futures-rank">${rank}</td>
@@ -8650,6 +8727,9 @@
                           <td class="futures-cap">
                             <strong>${escapeHtml(cap.main || TEXT.unknown)}</strong>
                             <span>${escapeHtml(cap.sub || TEXT.noCap)}</span>
+                          </td>
+                          <td class="futures-listings">
+                            ${spotListingsMarkup}
                           </td>
                         </tr>
                       `;
