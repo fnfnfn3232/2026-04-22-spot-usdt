@@ -835,6 +835,93 @@
         width: 100%;
       }
 
+      .market-chart-section {
+        padding: 0 18px 18px;
+      }
+
+      .market-chart-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+      }
+
+      .market-chart-title {
+        margin: 0;
+        color: var(--text);
+        font-size: 18px;
+        font-weight: 800;
+      }
+
+      .market-chart-tabs {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .market-chart-tab {
+        min-height: 38px;
+        padding: 8px 14px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .market-chart-tab.is-active {
+        border-color: #76bdd3;
+        background: #eaf6fa;
+        color: #006f94;
+      }
+
+      .market-chart-host {
+        width: 100%;
+        height: clamp(420px, 54vh, 560px);
+        min-height: 420px;
+        overflow: hidden;
+        background: #ffffff;
+      }
+
+      .market-chart-loading {
+        display: grid;
+        width: 100%;
+        height: 100%;
+        place-items: center;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .market-chart-host .tradingview-widget-container,
+      .market-chart-host .tradingview-widget-container__widget {
+        width: 100%;
+      }
+
+      .market-chart-host .tradingview-widget-container {
+        height: 100%;
+      }
+
+      .market-chart-host .tradingview-widget-container__widget {
+        height: calc(100% - 28px);
+      }
+
+      .market-chart-host .tradingview-widget-copyright {
+        height: 28px;
+        padding-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        text-align: right;
+      }
+
+      .market-chart-host .tradingview-widget-copyright a {
+        color: #006f94;
+        text-decoration: none;
+      }
+
       .title-status-slot .auto-strip {
         margin-top: 14px;
       }
@@ -4436,6 +4523,28 @@
           background: transparent;
           font-size: 12px;
         }
+
+        .market-chart-section {
+          padding: 0 2px 14px;
+        }
+
+        .market-chart-head {
+          align-items: flex-start;
+          margin-bottom: 8px;
+        }
+
+        .market-chart-tabs {
+          width: 100%;
+        }
+
+        .market-chart-tab {
+          flex: 1 1 0;
+        }
+
+        .market-chart-host {
+          height: 430px;
+          min-height: 430px;
+        }
       }
 
       /* White site theme */
@@ -4844,6 +4953,19 @@
         </div>
       </section>
 
+      <section class="panel market-chart-section market-section" id="marketChartSection">
+        <div class="market-chart-head">
+          <h2 class="market-chart-title">시장 차트</h2>
+          <div class="market-chart-tabs" role="group" aria-label="시장 차트 선택">
+            <button class="market-chart-tab is-active" type="button" data-market-chart="bitcoin" aria-pressed="true">비트코인</button>
+            <button class="market-chart-tab" type="button" data-market-chart="nasdaq" aria-pressed="false">나스닥</button>
+          </div>
+        </div>
+        <div class="market-chart-host" id="marketChartHost">
+          <div class="market-chart-loading">로그인 후 차트를 불러옵니다.</div>
+        </div>
+      </section>
+
       <section class="panel controls news-host" id="newsSection">
         <div class="news-panel" id="newsPanel"></div>
       </section>
@@ -5165,6 +5287,18 @@
     const MARKET_SOURCE_VISIBLE_KEY = "fdv_market_source_visible_v1";
     const MARKET_BOARDS = ["binance", "upbit", "bithumb", "coinbase"];
     const SCREEN_NAV_ITEMS = ["market", "news", "board", "ranking", "futures"];
+    const MARKET_CHARTS = {
+      bitcoin: {
+        symbol: "BINANCE:BTCUSDT",
+        label: "비트코인",
+        link: "https://www.tradingview.com/symbols/BTCUSDT/?exchange=BINANCE",
+      },
+      nasdaq: {
+        symbol: "OANDA:NAS100USD",
+        label: "나스닥 100",
+        link: "https://www.tradingview.com/symbols/OANDA-NAS100USD/",
+      },
+    };
     const SCREEN_SETTINGS_DEFAULT = {
       navOrder: ["market", "news", "board", "ranking", "futures"],
       boardOrder: ["binance", "upbit", "bithumb", "coinbase"],
@@ -5400,6 +5534,8 @@
     const statusText = document.getElementById("statusText");
       const marketTable = document.getElementById("marketTable");
       const marketSourceToggleBtn = document.getElementById("marketSourceToggleBtn");
+      const marketChartSection = document.getElementById("marketChartSection");
+      const marketChartHost = document.getElementById("marketChartHost");
       const footerNote = document.getElementById("footerNote");
       const statBinance = document.getElementById("statBinance");
       const statUpbit = document.getElementById("statUpbit");
@@ -5493,6 +5629,100 @@
       const deleteAuthAdminPasswordInput = document.getElementById("deleteAuthAdminPasswordInput");
       const deleteAuthSubmitBtn = document.getElementById("deleteAuthSubmitBtn");
       const deleteAuthError = document.getElementById("deleteAuthError");
+      let siteAuthConfirmed = false;
+      let selectedMarketChart = "bitcoin";
+      let loadedMarketChart = "";
+      let marketChartFrame = 0;
+
+      function destroyMarketChart(message = "") {
+        if (marketChartFrame) {
+          window.cancelAnimationFrame(marketChartFrame);
+          marketChartFrame = 0;
+        }
+        loadedMarketChart = "";
+        if (!marketChartHost) return;
+        marketChartHost.replaceChildren();
+        if (message) {
+          const loading = document.createElement("div");
+          loading.className = "market-chart-loading";
+          loading.textContent = message;
+          marketChartHost.appendChild(loading);
+        }
+      }
+
+      function renderMarketChartTabs() {
+        marketChartSection?.querySelectorAll("[data-market-chart]").forEach((button) => {
+          const active = button.dataset.marketChart === selectedMarketChart;
+          button.classList.toggle("is-active", active);
+          button.setAttribute("aria-pressed", String(active));
+        });
+      }
+
+      function mountMarketChart() {
+        marketChartFrame = 0;
+        if (!siteAuthConfirmed || state.viewMode !== "market" || !marketChartHost) return;
+        const chart = MARKET_CHARTS[selectedMarketChart] || MARKET_CHARTS.bitcoin;
+        if (loadedMarketChart === selectedMarketChart && marketChartHost.querySelector("iframe")) return;
+
+        destroyMarketChart();
+        renderMarketChartTabs();
+
+        const container = document.createElement("div");
+        container.className = "tradingview-widget-container";
+        const widget = document.createElement("div");
+        widget.className = "tradingview-widget-container__widget";
+        const attribution = document.createElement("div");
+        attribution.className = "tradingview-widget-copyright";
+        const link = document.createElement("a");
+        link.href = chart.link;
+        link.target = "_blank";
+        link.rel = "noopener nofollow";
+        link.textContent = `${chart.label} 차트`;
+        attribution.append(link, document.createTextNode(" by TradingView"));
+
+        const script = document.createElement("script");
+        script.type = "text/javascript";
+        script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+        script.async = true;
+        script.textContent = JSON.stringify({
+          autosize: true,
+          symbol: chart.symbol,
+          interval: "15",
+          timezone: "Asia/Seoul",
+          theme: "light",
+          style: "1",
+          locale: "kr",
+          backgroundColor: "#ffffff",
+          gridColor: "rgba(16, 36, 45, 0.06)",
+          allow_symbol_change: false,
+          calendar: false,
+          details: false,
+          hide_side_toolbar: false,
+          hide_top_toolbar: false,
+          hide_legend: false,
+          hide_volume: false,
+          hotlist: false,
+          save_image: true,
+          withdateranges: true,
+          watchlist: [],
+          compareSymbols: [],
+          studies: [],
+        });
+        script.addEventListener("error", () => {
+          if (selectedMarketChart === loadedMarketChart) {
+            destroyMarketChart("차트를 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 선택해 주세요.");
+          }
+        });
+
+        container.append(widget, attribution, script);
+        marketChartHost.appendChild(container);
+        loadedMarketChart = selectedMarketChart;
+      }
+
+      function scheduleMarketChart() {
+        if (!siteAuthConfirmed || state.viewMode !== "market" || !marketChartHost || marketChartFrame) return;
+        marketChartFrame = window.requestAnimationFrame(mountMarketChart);
+      }
       const deleteAuthCloseBtn = document.getElementById("deleteAuthCloseBtn");
       const deleteAuthCancelBtn = document.getElementById("deleteAuthCancelBtn");
       const coinInfoModal = document.getElementById("coinInfoModal");
@@ -5961,11 +6191,13 @@
       }
 
       function completeSiteLogin() {
+        siteAuthConfirmed = true;
         setLockExtendCount(0);
         hideSiteLock();
         renderLockTtl();
         lockPasswordInput.value = "";
         resetEmailLoginForm();
+        scheduleMarketChart();
         requestServerScreenSettingsRefresh({ selectDefault: true });
         if (state.viewMode === "board") {
           requestFreeBoardPostsRefresh(true);
@@ -9466,6 +9698,8 @@
       }
 
       function clearSiteLoginState() {
+        siteAuthConfirmed = false;
+        destroyMarketChart("로그인 후 차트를 불러옵니다.");
         setServerAuthToken("");
         localStorage.removeItem(LOCK_AUTH_UNTIL_KEY);
         localStorage.removeItem(LOCK_EXTEND_COUNT_KEY);
@@ -9521,10 +9755,12 @@
       function checkSiteLock() {
         if (siteLockCheckPromise) return siteLockCheckPromise;
         if (isLocalPreview()) {
+          siteAuthConfirmed = true;
           setLockExtendCount(0);
           setLockAuthFor24Hours();
           hideSiteLock();
           renderLockTtl();
+          scheduleMarketChart();
           return Promise.resolve(true);
         }
 
@@ -9537,9 +9773,11 @@
 
           try {
             await verifyServerSession();
+            siteAuthConfirmed = true;
             hideSiteLock();
             lockError.textContent = "";
             renderLockTtl();
+            scheduleMarketChart();
             await refreshAuthenticatedSite();
             return true;
           } catch (error) {
@@ -12076,6 +12314,11 @@
         boardToggleBtn.classList.toggle("active", isBoardMode);
         rankingToggleBtn.classList.toggle("active", isRankingMode);
         futuresToggleBtn.classList.toggle("active", isFuturesMode);
+        if (isMarketMode) {
+          scheduleMarketChart();
+        } else {
+          destroyMarketChart();
+        }
         if (isNewsMode || isBoardMode || isRankingMode || isFuturesMode) {
           renderContentPanel();
         }
@@ -13355,6 +13598,17 @@
 
       marketToggleBtn.addEventListener("click", () => {
         goHomeView();
+      });
+
+      marketChartSection?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-market-chart]");
+        if (!button || !marketChartSection.contains(button)) return;
+        const chartKey = String(button.dataset.marketChart || "");
+        if (!MARKET_CHARTS[chartKey] || chartKey === selectedMarketChart) return;
+        selectedMarketChart = chartKey;
+        loadedMarketChart = "";
+        renderMarketChartTabs();
+        scheduleMarketChart();
       });
 
       newsToggleBtn.addEventListener("click", () => {
