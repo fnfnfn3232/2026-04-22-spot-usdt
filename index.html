@@ -4959,6 +4959,8 @@
           <div class="market-chart-tabs" role="group" aria-label="시장 차트 선택">
             <button class="market-chart-tab is-active" type="button" data-market-chart="bitcoin" aria-pressed="true">비트코인</button>
             <button class="market-chart-tab" type="button" data-market-chart="nasdaq" aria-pressed="false">나스닥</button>
+            <button class="market-chart-tab" type="button" data-market-chart="gold" aria-pressed="false">금</button>
+            <button class="market-chart-tab" type="button" data-market-chart="kospi" aria-pressed="false">코스피</button>
           </div>
         </div>
         <div class="market-chart-host" id="marketChartHost">
@@ -5297,6 +5299,17 @@
         symbol: "OANDA:NAS100USD",
         label: "나스닥 100",
         link: "https://www.tradingview.com/symbols/OANDA-NAS100USD/",
+      },
+      gold: {
+        symbol: "OANDA:XAUUSD",
+        label: "금 현물",
+        link: "https://www.tradingview.com/symbols/OANDA-XAUUSD/",
+      },
+      kospi: {
+        symbol: "INDEX:KSIC",
+        label: "코스피",
+        link: "https://www.tradingview.com/symbols/INDEX-KSIC/",
+        interval: "D",
       },
     };
     const SCREEN_SETTINGS_DEFAULT = {
@@ -5687,7 +5700,7 @@
         script.textContent = JSON.stringify({
           autosize: true,
           symbol: chart.symbol,
-          interval: "15",
+          interval: chart.interval || "15",
           timezone: "Asia/Seoul",
           theme: "light",
           style: "1",
