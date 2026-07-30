@@ -8696,7 +8696,7 @@
                   </thead>
                   <tbody>
                     ${visibleRows.map((row, index) => {
-                      const price = priceDisplay(row);
+                      const price = priceDisplay(row, { minimumUsdFractionDigits: 5 });
                       const cap = capDisplay(row);
                       const rank = start + index + 1;
                       const spotListings = futuresSpotListings(row, spotListingLookup);
@@ -10019,12 +10019,18 @@
       };
     }
 
-    function formatUsdPrice(value) {
+    function formatUsdPrice(value, minimumFractionDigits = 0) {
       if (!Number.isFinite(value)) return TEXT.unknown;
       let digits = 2;
       if (value < 1) digits = 4;
       if (value < 0.01) digits = 8;
-      return `$${formatNumber(value, digits)}`;
+      const requestedMinimum = Math.max(0, Math.floor(Number(minimumFractionDigits) || 0));
+      const visibleMinimum = value < 1 ? requestedMinimum : 0;
+      const visibleMaximum = Math.max(digits, visibleMinimum);
+      return `$${new Intl.NumberFormat("ko-KR", {
+        minimumFractionDigits: visibleMinimum,
+        maximumFractionDigits: visibleMaximum,
+      }).format(value)}`;
     }
 
     function formatKrwPrice(value) {
@@ -10033,15 +10039,19 @@
       return `${formatNumber(value, digits)}원`;
     }
 
-    function priceDisplay(row) {
+    function priceDisplay(row, options = {}) {
+      const minimumUsdFractionDigits = Math.max(
+        0,
+        Math.floor(Number(options.minimumUsdFractionDigits) || 0)
+      );
       if (row.nativeCurrency === "KRW") {
         return {
           main: formatKrwPrice(Number(row.priceKrw)),
-          sub: formatUsdPrice(Number(row.priceUsd)),
+          sub: formatUsdPrice(Number(row.priceUsd), minimumUsdFractionDigits),
         };
       }
       return {
-        main: formatUsdPrice(Number(row.priceUsd)),
+        main: formatUsdPrice(Number(row.priceUsd), minimumUsdFractionDigits),
         sub: formatKrwPrice(Number(row.priceKrw)),
       };
     }
