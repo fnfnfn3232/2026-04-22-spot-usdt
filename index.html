@@ -1644,17 +1644,20 @@
       }
 
       .audit-filters,
+      .audit-sorts,
       .audit-search {
         display: flex;
         align-items: center;
         gap: 7px;
       }
 
-      .audit-filters {
+      .audit-filters,
+      .audit-sorts {
         flex-wrap: wrap;
       }
 
-      .audit-filter {
+      .audit-filter,
+      .audit-sort {
         min-height: 38px;
         padding: 0 13px;
         border: 1px solid var(--line);
@@ -1664,7 +1667,8 @@
         font-weight: 800;
       }
 
-      .audit-filter.active {
+      .audit-filter.active,
+      .audit-sort.active {
         border-color: var(--accent);
         background: var(--accent-soft);
         color: var(--accent);
@@ -1698,7 +1702,7 @@
 
       .audit-table {
         width: 100%;
-        min-width: 920px;
+        min-width: 1180px;
         border-collapse: collapse;
         table-layout: fixed;
       }
@@ -1718,18 +1722,19 @@
       }
 
       .audit-no {
-        width: 70px;
+        width: 5%;
         color: var(--muted);
         font-weight: 800;
       }
 
       .audit-coin {
-        width: 22%;
+        width: 14%;
       }
 
       .audit-coin strong,
       .audit-quantity strong,
-      .audit-ratio strong {
+      .audit-ratio strong,
+      .audit-market strong {
         display: block;
         color: var(--text);
         font-size: 15px;
@@ -1738,7 +1743,8 @@
 
       .audit-coin span,
       .audit-quantity span,
-      .audit-ratio span {
+      .audit-ratio span,
+      .audit-market span {
         display: block;
         margin-top: 4px;
         color: var(--muted);
@@ -1746,12 +1752,17 @@
       }
 
       .audit-quantity {
-        width: 25%;
+        width: 12%;
         font-variant-numeric: tabular-nums;
       }
 
       .audit-ratio {
-        width: 17%;
+        width: 13%;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .audit-market {
+        width: 11%;
         font-variant-numeric: tabular-nums;
       }
 
@@ -4196,6 +4207,10 @@
 
         .audit-table tr {
           position: relative;
+          display: grid !important;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          column-gap: 12px;
+          row-gap: 11px;
           padding: 13px 4px 12px 40px;
           border-bottom: 1px solid var(--line);
         }
@@ -4214,16 +4229,26 @@
           font-size: 13px;
         }
 
-        .audit-quantity,
-        .audit-ratio {
-          margin-top: 9px;
+        .audit-coin {
+          grid-column: 1 / -1;
         }
 
-        .audit-quantity {
-          display: inline-block !important;
-          width: min(50%, 190px) !important;
-          padding-right: 10px !important;
-          vertical-align: top;
+        .audit-quantity,
+        .audit-ratio,
+        .audit-market {
+          margin-top: 0;
+        }
+
+        .audit-quantity,
+        .audit-market {
+          display: block !important;
+          width: auto !important;
+          padding-right: 0 !important;
+        }
+
+        .audit-ratio {
+          grid-column: 1 / -1;
+          padding-top: 4px !important;
         }
 
         .audit-note {
@@ -6836,6 +6861,7 @@
       let upbitAuditPromise = null;
       let upbitAuditError = "";
       let upbitAuditFilter = "listed";
+      let upbitAuditSort = "report";
       let upbitAuditQuery = "";
       let upbitAuditPage = 1;
       let adminServerPassword = "";
@@ -9316,6 +9342,39 @@
         return String(value || "").trim().toUpperCase();
       }
 
+      function parseAuditQuantity(value) {
+        const normalized = String(value ?? "").replace(/,/g, "").trim();
+        if (!normalized || !/^\d+(?:\.\d+)?$/.test(normalized)) return null;
+        const number = Number(normalized);
+        return Number.isFinite(number) && number >= 0 ? number : null;
+      }
+
+      function formatAuditSupplyShare(value) {
+        if (!Number.isFinite(value) || value < 0) return "-";
+        if (value > 0 && value < 0.0001) return "<0.0001%";
+        return `${formatNumber(value, value < 0.01 ? 4 : 2)}%`;
+      }
+
+      function enrichUpbitAuditRow(row, marketRow) {
+        const holdingQuantity = parseAuditQuantity(row.blockchainQuantity);
+        const totalSupply = toPositiveNumber(marketRow?.totalSupply);
+        const priceKrw = toPositiveNumber(marketRow?.priceKrw);
+        const supplyShare = holdingQuantity !== null && totalSupply !== null
+          ? (holdingQuantity / totalSupply) * 100
+          : null;
+        const holdingValueKrw = holdingQuantity !== null && priceKrw !== null
+          ? holdingQuantity * priceKrw
+          : null;
+        return {
+          ...row,
+          totalSupply,
+          priceKrw,
+          holdingQuantity,
+          supplyShare,
+          holdingValueKrw,
+        };
+      }
+
       function getUpbitAuditListedRows() {
         const seen = new Set();
         return (Array.isArray(data.boards?.upbit) ? data.boards.upbit : []).filter((row) => {
@@ -9394,7 +9453,7 @@
         const listedBySymbol = new Map(listedRows.map((row) => [normalizeAuditSymbol(row.symbol), row]));
         const listedAuditRows = listedRows.map((marketRow) => {
           const symbol = normalizeAuditSymbol(marketRow.symbol);
-          return {
+          return enrichUpbitAuditRow({
             ...(reportBySymbol.get(symbol) || {
               no: 0,
               symbol,
@@ -9406,15 +9465,15 @@
             }),
             name: marketRow.name || marketRow.koreanName || marketRow.englishName || symbol,
             listed: true,
-          };
+          }, marketRow);
         });
         const fullReportRows = reportRows.map((row) => {
           const marketRow = listedBySymbol.get(row.symbol);
-          return {
+          return enrichUpbitAuditRow({
             ...row,
             name: marketRow?.name || marketRow?.koreanName || marketRow?.englishName || row.symbol,
             listed: Boolean(marketRow),
-          };
+          }, marketRow);
         });
         const lowRows = fullReportRows.filter((row) => Number.isFinite(row.ratioValue) && row.ratioValue < 100);
         const baseRows = upbitAuditFilter === "report"
@@ -9423,11 +9482,23 @@
             ? lowRows
             : listedAuditRows;
         const normalizedQuery = upbitAuditQuery.trim().toLocaleLowerCase("ko-KR");
-        const filteredRows = normalizedQuery
+        const searchedRows = normalizedQuery
           ? baseRows.filter((row) => [row.name, row.symbol].some((value) =>
               String(value || "").toLocaleLowerCase("ko-KR").includes(normalizedQuery)
             ))
           : baseRows;
+        const filteredRows = searchedRows.map((row, index) => ({ row, index })).sort((a, b) => {
+          if (upbitAuditSort === "report") return a.index - b.index;
+          const aValue = a.row.holdingValueKrw;
+          const bValue = b.row.holdingValueKrw;
+          const aValid = Number.isFinite(aValue);
+          const bValid = Number.isFinite(bValue);
+          if (!aValid && !bValid) return a.index - b.index;
+          if (!aValid) return 1;
+          if (!bValid) return -1;
+          const difference = upbitAuditSort === "value-asc" ? aValue - bValue : bValue - aValue;
+          return difference || a.index - b.index;
+        }).map((entry) => entry.row);
         const totalPages = Math.max(1, Math.ceil(filteredRows.length / UPBIT_AUDIT_PAGE_SIZE));
         if (upbitAuditPage > totalPages) upbitAuditPage = 1;
         const start = (upbitAuditPage - 1) * UPBIT_AUDIT_PAGE_SIZE;
@@ -9465,6 +9536,11 @@
                 <button class="audit-filter${upbitAuditFilter === "report" ? " active" : ""}" type="button" data-audit-filter="report">보고서 전체</button>
                 <button class="audit-filter${upbitAuditFilter === "low" ? " active" : ""}" type="button" data-audit-filter="low">보유비율 미달</button>
               </div>
+              <div class="audit-sorts" aria-label="업비트 보유가치 정렬">
+                <button class="audit-sort${upbitAuditSort === "report" ? " active" : ""}" type="button" data-audit-sort="report">기본 순서</button>
+                <button class="audit-sort${upbitAuditSort === "value-desc" ? " active" : ""}" type="button" data-audit-sort="value-desc">보유가치 높은순</button>
+                <button class="audit-sort${upbitAuditSort === "value-asc" ? " active" : ""}" type="button" data-audit-sort="value-asc">보유가치 낮은순</button>
+              </div>
               <form class="audit-search" id="auditSearchForm">
                 <input name="auditQuery" type="search" autocomplete="off" placeholder="코인명·심볼 검색" value="${escapeAttr(upbitAuditQuery)}" />
                 <button type="submit">검색</button>
@@ -9475,6 +9551,7 @@
             <p class="audit-note">
               전산원장은 이용자 위탁 수량(A), 분산원장은 블록체인상 이용자 위탁 수량(B)입니다.
               보고서 수량은 정수 단위로 반올림되어 0은 0.5개 미만일 수 있습니다.
+              총발행량 대비 비율은 B ÷ 현재 총발행량, 업비트 보유가치는 B × 현재 원화 가격으로 계산하며 실사 기준일과 가격 기준 시점이 서로 다릅니다.
               ${missingCount ? `현재 상장 코인 중 기준일 이후 추가되어 보고서에 없는 자산은 ${formatNumber(missingCount, 0)}개이며 “보고서 없음”으로 표시합니다.` : ""}
             </p>
             ${visibleRows.length ? `
@@ -9486,6 +9563,10 @@
                       <th class="audit-coin">코인</th>
                       <th class="audit-quantity">전산원장 수량 (A)</th>
                       <th class="audit-quantity">분산원장 수량 (B)</th>
+                      <th class="audit-market">총발행량</th>
+                      <th class="audit-market">발행량 대비 보유</th>
+                      <th class="audit-market">현재 가격</th>
+                      <th class="audit-market">업비트 보유가치</th>
                       <th class="audit-ratio">보유비율 (B/A)</th>
                     </tr>
                   </thead>
@@ -9501,6 +9582,10 @@
                           </td>
                           <td class="audit-quantity"><strong>${escapeHtml(row.ledgerQuantity)}</strong><span>전산원장</span></td>
                           <td class="audit-quantity"><strong>${escapeHtml(row.blockchainQuantity)}</strong><span>분산원장</span></td>
+                          <td class="audit-market"><strong>${row.totalSupply !== null ? escapeHtml(formatTokenAmount(row.totalSupply)) : "-"}</strong><span>현재 총발행량</span></td>
+                          <td class="audit-market"><strong>${escapeHtml(formatAuditSupplyShare(row.supplyShare))}</strong><span>분산원장 ÷ 총발행량</span></td>
+                          <td class="audit-market"><strong>${row.priceKrw !== null ? escapeHtml(formatKrwPrice(row.priceKrw)) : "-"}</strong><span>현재 업비트 가격</span></td>
+                          <td class="audit-market"><strong>${row.holdingValueKrw !== null ? escapeHtml(formatKrwShort(row.holdingValueKrw)) : "-"}</strong><span>분산원장 × 현재 가격</span></td>
                           <td class="audit-ratio${low ? " is-low" : ""}">
                             <strong>${escapeHtml(row.reported ? row.ratio : "보고서 없음")}</strong>
                             <span>${row.reported ? "분산원장 ÷ 전산원장" : "기준일 이후 상장 가능"}</span>
@@ -12782,6 +12867,7 @@
           futuresPage,
           futuresSortDirection,
           upbitAuditFilter,
+          upbitAuditSort,
           upbitAuditQuery,
           upbitAuditPage,
         };
@@ -12847,6 +12933,9 @@
         upbitAuditFilter = ["listed", "report", "low"].includes(payload.upbitAuditFilter)
           ? String(payload.upbitAuditFilter)
           : "listed";
+        upbitAuditSort = ["report", "value-desc", "value-asc"].includes(payload.upbitAuditSort)
+          ? String(payload.upbitAuditSort)
+          : "report";
         upbitAuditQuery = String(payload.upbitAuditQuery || "").slice(0, 80);
         upbitAuditPage = Math.max(1, Math.floor(Number(payload.upbitAuditPage) || 1));
         setViewMode(payload.viewMode, { writeHistory: false });
@@ -13628,6 +13717,18 @@
           const nextFilter = String(auditFilterButton.dataset.auditFilter || "");
           if (["listed", "report", "low"].includes(nextFilter)) {
             upbitAuditFilter = nextFilter;
+            upbitAuditPage = 1;
+            renderAuditPanel();
+            writeAppHistoryState(true);
+          }
+          return;
+        }
+
+        const auditSortButton = clickTarget.closest("[data-audit-sort]");
+        if (auditSortButton) {
+          const nextSort = String(auditSortButton.dataset.auditSort || "");
+          if (["report", "value-desc", "value-asc"].includes(nextSort)) {
+            upbitAuditSort = nextSort;
             upbitAuditPage = 1;
             renderAuditPanel();
             writeAppHistoryState(true);
