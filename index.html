@@ -9489,14 +9489,15 @@
           : baseRows;
         const filteredRows = searchedRows.map((row, index) => ({ row, index })).sort((a, b) => {
           if (upbitAuditSort === "report") return a.index - b.index;
-          const aValue = a.row.holdingValueKrw;
-          const bValue = b.row.holdingValueKrw;
+          const sortField = upbitAuditSort.startsWith("share-") ? "supplyShare" : "holdingValueKrw";
+          const aValue = a.row[sortField];
+          const bValue = b.row[sortField];
           const aValid = Number.isFinite(aValue);
           const bValid = Number.isFinite(bValue);
           if (!aValid && !bValid) return a.index - b.index;
           if (!aValid) return 1;
           if (!bValid) return -1;
-          const difference = upbitAuditSort === "value-asc" ? aValue - bValue : bValue - aValue;
+          const difference = upbitAuditSort.endsWith("-asc") ? aValue - bValue : bValue - aValue;
           return difference || a.index - b.index;
         }).map((entry) => entry.row);
         const totalPages = Math.max(1, Math.ceil(filteredRows.length / UPBIT_AUDIT_PAGE_SIZE));
@@ -9536,8 +9537,10 @@
                 <button class="audit-filter${upbitAuditFilter === "report" ? " active" : ""}" type="button" data-audit-filter="report">보고서 전체</button>
                 <button class="audit-filter${upbitAuditFilter === "low" ? " active" : ""}" type="button" data-audit-filter="low">보유비율 미달</button>
               </div>
-              <div class="audit-sorts" aria-label="업비트 보유가치 정렬">
+              <div class="audit-sorts" aria-label="발행량 대비 보유 및 업비트 보유가치 정렬">
                 <button class="audit-sort${upbitAuditSort === "report" ? " active" : ""}" type="button" data-audit-sort="report">기본 순서</button>
+                <button class="audit-sort${upbitAuditSort === "share-desc" ? " active" : ""}" type="button" data-audit-sort="share-desc">발행대비 높은순</button>
+                <button class="audit-sort${upbitAuditSort === "share-asc" ? " active" : ""}" type="button" data-audit-sort="share-asc">발행대비 낮은순</button>
                 <button class="audit-sort${upbitAuditSort === "value-desc" ? " active" : ""}" type="button" data-audit-sort="value-desc">보유가치 높은순</button>
                 <button class="audit-sort${upbitAuditSort === "value-asc" ? " active" : ""}" type="button" data-audit-sort="value-asc">보유가치 낮은순</button>
               </div>
@@ -12933,7 +12936,7 @@
         upbitAuditFilter = ["listed", "report", "low"].includes(payload.upbitAuditFilter)
           ? String(payload.upbitAuditFilter)
           : "listed";
-        upbitAuditSort = ["report", "value-desc", "value-asc"].includes(payload.upbitAuditSort)
+        upbitAuditSort = ["report", "share-desc", "share-asc", "value-desc", "value-asc"].includes(payload.upbitAuditSort)
           ? String(payload.upbitAuditSort)
           : "report";
         upbitAuditQuery = String(payload.upbitAuditQuery || "").slice(0, 80);
@@ -13727,7 +13730,7 @@
         const auditSortButton = clickTarget.closest("[data-audit-sort]");
         if (auditSortButton) {
           const nextSort = String(auditSortButton.dataset.auditSort || "");
-          if (["report", "value-desc", "value-asc"].includes(nextSort)) {
+          if (["report", "share-desc", "share-asc", "value-desc", "value-asc"].includes(nextSort)) {
             upbitAuditSort = nextSort;
             upbitAuditPage = 1;
             renderAuditPanel();
