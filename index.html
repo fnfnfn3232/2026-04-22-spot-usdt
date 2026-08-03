@@ -1127,21 +1127,24 @@
       .shell.news-mode .news-host,
       .shell.board-mode .news-host,
       .shell.ranking-mode .news-host,
-      .shell.futures-mode .news-host {
+      .shell.futures-mode .news-host,
+      .shell.audit-mode .news-host {
         display: block;
       }
 
       .shell.news-mode .market-only,
       .shell.board-mode .market-only,
       .shell.ranking-mode .market-only,
-      .shell.futures-mode .market-only {
+      .shell.futures-mode .market-only,
+      .shell.audit-mode .market-only {
         display: none !important;
       }
 
       .shell.news-mode .market-section,
       .shell.board-mode .market-section,
       .shell.ranking-mode .market-section,
-      .shell.futures-mode .market-section {
+      .shell.futures-mode .market-section,
+      .shell.audit-mode .market-section {
         display: none;
       }
 
@@ -1560,6 +1563,223 @@
       }
 
       .futures-empty {
+        padding: 42px 12px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      .audit-shell {
+        min-width: 0;
+      }
+
+      .audit-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 20px;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .audit-title {
+        margin: 0;
+        color: var(--text);
+        font-size: 22px;
+        font-weight: 900;
+      }
+
+      .audit-subtitle {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .audit-source-link {
+        flex: 0 0 auto;
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 800;
+        text-decoration: none;
+      }
+
+      .audit-summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        border-bottom: 1px solid var(--line);
+      }
+
+      .audit-summary-item {
+        min-width: 0;
+        padding: 16px 12px;
+      }
+
+      .audit-summary-item + .audit-summary-item {
+        border-left: 1px solid var(--line);
+      }
+
+      .audit-summary-item span,
+      .audit-summary-item strong {
+        display: block;
+      }
+
+      .audit-summary-item span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .audit-summary-item strong {
+        margin-top: 5px;
+        color: var(--text);
+        font-size: 18px;
+        font-weight: 900;
+      }
+
+      .audit-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 14px 0 10px;
+      }
+
+      .audit-filters,
+      .audit-search {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .audit-filters {
+        flex-wrap: wrap;
+      }
+
+      .audit-filter {
+        min-height: 38px;
+        padding: 0 13px;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .audit-filter.active {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+
+      .audit-search {
+        width: min(430px, 100%);
+      }
+
+      .audit-search input {
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+
+      .audit-note,
+      .audit-meta {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .audit-note {
+        margin: 0;
+        padding: 0 0 12px;
+        line-height: 1.65;
+      }
+
+      .audit-table-wrap {
+        overflow-x: auto;
+        border-top: 1px solid var(--line);
+      }
+
+      .audit-table {
+        width: 100%;
+        min-width: 920px;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+
+      .audit-table th,
+      .audit-table td {
+        padding: 14px 12px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      .audit-table th {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .audit-no {
+        width: 70px;
+        color: var(--muted);
+        font-weight: 800;
+      }
+
+      .audit-coin {
+        width: 22%;
+      }
+
+      .audit-coin strong,
+      .audit-quantity strong,
+      .audit-ratio strong {
+        display: block;
+        color: var(--text);
+        font-size: 15px;
+        font-weight: 900;
+      }
+
+      .audit-coin span,
+      .audit-quantity span,
+      .audit-ratio span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .audit-quantity {
+        width: 25%;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .audit-ratio {
+        width: 17%;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .audit-ratio.is-low strong {
+        color: var(--danger, #c33f47);
+      }
+
+      .audit-pages {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 7px;
+        padding-top: 16px;
+      }
+
+      .audit-pages button {
+        min-width: 38px;
+        min-height: 36px;
+        padding: 6px 10px;
+      }
+
+      .audit-pages button.active {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .audit-empty,
+      .audit-loading {
         padding: 42px 12px;
         color: var(--muted);
         text-align: center;
@@ -3917,6 +4137,99 @@
           font-size: 12px;
         }
 
+        .audit-head,
+        .audit-toolbar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .audit-title {
+          font-size: 19px;
+        }
+
+        .audit-source-link {
+          align-self: flex-start;
+        }
+
+        .audit-summary {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .audit-summary-item:nth-child(3) {
+          border-left: 0;
+          border-top: 1px solid var(--line);
+        }
+
+        .audit-summary-item:nth-child(4) {
+          border-top: 1px solid var(--line);
+        }
+
+        .audit-search {
+          width: 100%;
+        }
+
+        .audit-meta {
+          margin: 0;
+        }
+
+        .audit-table-wrap {
+          overflow: visible;
+          border-top: 0;
+        }
+
+        .audit-table {
+          min-width: 0;
+          table-layout: auto;
+        }
+
+        .audit-table thead {
+          display: none;
+        }
+
+        .audit-table,
+        .audit-table tbody,
+        .audit-table tr,
+        .audit-table td {
+          display: block;
+          width: 100%;
+        }
+
+        .audit-table tr {
+          position: relative;
+          padding: 13px 4px 12px 40px;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .audit-table td {
+          width: auto;
+          padding: 0;
+          border: 0;
+        }
+
+        .audit-no {
+          position: absolute;
+          top: 14px;
+          left: 4px;
+          width: 28px;
+          font-size: 13px;
+        }
+
+        .audit-quantity,
+        .audit-ratio {
+          margin-top: 9px;
+        }
+
+        .audit-quantity {
+          display: inline-block !important;
+          width: min(50%, 190px) !important;
+          padding-right: 10px !important;
+          vertical-align: top;
+        }
+
+        .audit-note {
+          font-size: 12px;
+        }
+
         .ranking-tabs {
           gap: 14px;
         }
@@ -4918,6 +5231,7 @@
             <button class="view-link" id="boardToggleBtn" type="button" data-view-nav="board"></button>
             <button class="view-link" id="rankingToggleBtn" type="button" data-view-nav="ranking"></button>
             <button class="view-link" id="futuresToggleBtn" type="button" data-view-nav="futures"></button>
+            <button class="view-link" id="auditToggleBtn" type="button" data-view-nav="audit"></button>
           </div>
           <div class="auto-strip-slot title-status-slot market-only" id="titleStatusSlot"></div>
         </div>
@@ -5288,7 +5602,9 @@
     const SCREEN_SETTINGS_KEY = "fdv_screen_settings_v1";
     const MARKET_SOURCE_VISIBLE_KEY = "fdv_market_source_visible_v1";
     const MARKET_BOARDS = ["binance", "upbit", "bithumb", "coinbase"];
-    const SCREEN_NAV_ITEMS = ["market", "news", "board", "ranking", "futures"];
+    const SCREEN_NAV_ITEMS = ["market", "news", "board", "ranking", "futures", "audit"];
+    const UPBIT_AUDIT_DATA_URL = "./upbit-audit-202607.json";
+    const UPBIT_AUDIT_PAGE_SIZE = 50;
     const MARKET_CHARTS = {
       bitcoin: {
         symbol: "BINANCE:BTCUSDT",
@@ -5313,7 +5629,7 @@
       },
     };
     const SCREEN_SETTINGS_DEFAULT = {
-      navOrder: ["market", "news", "board", "ranking", "futures"],
+      navOrder: ["market", "news", "board", "ranking", "futures", "audit"],
       boardOrder: ["binance", "upbit", "bithumb", "coinbase"],
       statusPosition: "summary",
       visibleStats: {
@@ -5411,6 +5727,7 @@
         boardOpen: "\uAC8C\uC2DC\uD310",
         rankingOpen: "\uB7AD\uD0B9",
         futuresOpen: "\uC120\uBB3C",
+        auditOpen: "\uC2E4\uC0AC \uBCF4\uC720\uB7C9",
         newsTitle: "",
         newsOpenLink: "\uC0C8 \uCC3D \uC5F4\uAE30",
         newsHint: "\uB274\uC2A4 \uD56D\uBAA9\uC740 \uC694\uC57D \uAE30\uC900\uC73C\uB85C \uD45C\uC2DC\uB429\uB2C8\uB2E4.",
@@ -5581,6 +5898,7 @@
       const boardToggleBtn = document.getElementById("boardToggleBtn");
       const rankingToggleBtn = document.getElementById("rankingToggleBtn");
       const futuresToggleBtn = document.getElementById("futuresToggleBtn");
+      const auditToggleBtn = document.getElementById("auditToggleBtn");
       const screenSettingsSaveBtn = document.getElementById("screenSettingsSaveBtn");
       const screenSettingsResetBtn = document.getElementById("screenSettingsResetBtn");
       const screenSettingsMenuOrder = document.getElementById("screenSettingsMenuOrder");
@@ -6514,6 +6832,12 @@
       let futuresQuery = "";
       let futuresPage = 1;
       let futuresSortDirection = "desc";
+      let upbitAuditData = null;
+      let upbitAuditPromise = null;
+      let upbitAuditError = "";
+      let upbitAuditFilter = "listed";
+      let upbitAuditQuery = "";
+      let upbitAuditPage = 1;
       let adminServerPassword = "";
       let serverUsageStats = null;
       let serverUsageError = "";
@@ -8988,6 +9312,211 @@
         `;
       }
 
+      function normalizeAuditSymbol(value) {
+        return String(value || "").trim().toUpperCase();
+      }
+
+      function getUpbitAuditListedRows() {
+        const seen = new Set();
+        return (Array.isArray(data.boards?.upbit) ? data.boards.upbit : []).filter((row) => {
+          const symbol = normalizeAuditSymbol(row?.symbol);
+          if (!symbol || seen.has(symbol)) return false;
+          seen.add(symbol);
+          return true;
+        });
+      }
+
+      async function loadUpbitAuditData(force = false) {
+        if (upbitAuditData && !force) return upbitAuditData;
+        if (upbitAuditPromise) return upbitAuditPromise;
+        upbitAuditError = "";
+        upbitAuditPromise = fetch(`${UPBIT_AUDIT_DATA_URL}?v=20260701`, {
+          method: "GET",
+          cache: force ? "reload" : "force-cache",
+        })
+          .then(async (response) => {
+            if (!response.ok) throw new Error(`audit_http_${response.status}`);
+            const payload = await response.json();
+            if (!payload || !Array.isArray(payload.rows) || payload.rows.length < 1) {
+              throw new Error("audit_data_invalid");
+            }
+            upbitAuditData = payload;
+            return payload;
+          })
+          .catch((error) => {
+            upbitAuditError = String(error?.message || "audit_load_failed");
+            throw error;
+          })
+          .finally(() => {
+            upbitAuditPromise = null;
+            if (state.viewMode === "audit") renderAuditPanel();
+          });
+        return upbitAuditPromise;
+      }
+
+      function requestUpbitAuditData(force = false) {
+        if (upbitAuditData && !force) return;
+        loadUpbitAuditData(force).catch((error) => console.error(error));
+      }
+
+      function renderAuditPanel() {
+        if (!upbitAuditData) {
+          newsPanel.innerHTML = `
+            <div class="audit-shell">
+              <div class="audit-head">
+                <div>
+                  <h2 class="audit-title">업비트 디지털 자산 실사 보유량</h2>
+                  <p class="audit-subtitle">2026년 7월 발행 보고서 · 기준 시점 2026년 6월 30일 24시</p>
+                </div>
+              </div>
+              <p class="${upbitAuditError ? "audit-empty" : "audit-loading"}">
+                ${upbitAuditError
+                  ? '실사 보고서 데이터를 불러오지 못했습니다. <button type="button" data-audit-retry>다시 시도</button>'
+                  : "실사 보고서 데이터를 불러오는 중입니다..."}
+              </p>
+            </div>
+          `;
+          if (!upbitAuditError) requestUpbitAuditData();
+          return;
+        }
+
+        const reportRows = upbitAuditData.rows.map((values) => ({
+          no: Number(values[0]) || 0,
+          symbol: normalizeAuditSymbol(values[1]),
+          ledgerQuantity: String(values[2] || "-"),
+          blockchainQuantity: String(values[3] || "-"),
+          ratio: String(values[4] || "-"),
+          ratioValue: Number.parseFloat(String(values[4] || "").replace("%", "")),
+          reported: true,
+        }));
+        const reportBySymbol = new Map(reportRows.map((row) => [row.symbol, row]));
+        const listedRows = getUpbitAuditListedRows();
+        const listedBySymbol = new Map(listedRows.map((row) => [normalizeAuditSymbol(row.symbol), row]));
+        const listedAuditRows = listedRows.map((marketRow) => {
+          const symbol = normalizeAuditSymbol(marketRow.symbol);
+          return {
+            ...(reportBySymbol.get(symbol) || {
+              no: 0,
+              symbol,
+              ledgerQuantity: "-",
+              blockchainQuantity: "-",
+              ratio: "-",
+              ratioValue: Number.NaN,
+              reported: false,
+            }),
+            name: marketRow.name || marketRow.koreanName || marketRow.englishName || symbol,
+            listed: true,
+          };
+        });
+        const fullReportRows = reportRows.map((row) => {
+          const marketRow = listedBySymbol.get(row.symbol);
+          return {
+            ...row,
+            name: marketRow?.name || marketRow?.koreanName || marketRow?.englishName || row.symbol,
+            listed: Boolean(marketRow),
+          };
+        });
+        const lowRows = fullReportRows.filter((row) => Number.isFinite(row.ratioValue) && row.ratioValue < 100);
+        const baseRows = upbitAuditFilter === "report"
+          ? fullReportRows
+          : upbitAuditFilter === "low"
+            ? lowRows
+            : listedAuditRows;
+        const normalizedQuery = upbitAuditQuery.trim().toLocaleLowerCase("ko-KR");
+        const filteredRows = normalizedQuery
+          ? baseRows.filter((row) => [row.name, row.symbol].some((value) =>
+              String(value || "").toLocaleLowerCase("ko-KR").includes(normalizedQuery)
+            ))
+          : baseRows;
+        const totalPages = Math.max(1, Math.ceil(filteredRows.length / UPBIT_AUDIT_PAGE_SIZE));
+        if (upbitAuditPage > totalPages) upbitAuditPage = 1;
+        const start = (upbitAuditPage - 1) * UPBIT_AUDIT_PAGE_SIZE;
+        const visibleRows = filteredRows.slice(start, start + UPBIT_AUDIT_PAGE_SIZE);
+        const matchedCount = listedAuditRows.filter((row) => row.reported).length;
+        const missingCount = Math.max(0, listedAuditRows.length - matchedCount);
+        const sourceUrl = isSafeHttpUrl(upbitAuditData.sourceUrl)
+          ? upbitAuditData.sourceUrl
+          : "https://static.upbit.com/reports/upbit_asset_report_202607.pdf";
+        const pagesMarkup = totalPages > 1
+          ? `<div class="audit-pages">${Array.from({ length: totalPages }, (_unused, index) => {
+              const page = index + 1;
+              return `<button class="${page === upbitAuditPage ? "active" : ""}" type="button" data-audit-page="${page}">${page}</button>`;
+            }).join("")}</div>`
+          : "";
+
+        newsPanel.innerHTML = `
+          <div class="audit-shell">
+            <div class="audit-head">
+              <div>
+                <h2 class="audit-title">업비트 디지털 자산 실사 보유량</h2>
+                <p class="audit-subtitle">${escapeHtml(upbitAuditData.publishedLabel || "2026년 7월 발행")} · 기준 시점 ${escapeHtml(upbitAuditData.referenceLabel || "2026년 6월 30일 24시")}</p>
+              </div>
+              <a class="audit-source-link" href="${escapeAttr(sourceUrl)}" target="_blank" rel="noopener noreferrer">공식 PDF 보기</a>
+            </div>
+            <div class="audit-summary" aria-label="실사 보고서 요약">
+              <div class="audit-summary-item"><span>현재 업비트 상장</span><strong>${formatNumber(listedAuditRows.length, 0)}개</strong></div>
+              <div class="audit-summary-item"><span>보고서 일치</span><strong>${formatNumber(matchedCount, 0)}개</strong></div>
+              <div class="audit-summary-item"><span>보고서 전체 자산</span><strong>${formatNumber(reportRows.length, 0)}개</strong></div>
+              <div class="audit-summary-item"><span>보유비율 100% 미만</span><strong>${formatNumber(lowRows.length, 0)}개</strong></div>
+            </div>
+            <div class="audit-toolbar">
+              <div class="audit-filters" aria-label="실사 자산 필터">
+                <button class="audit-filter${upbitAuditFilter === "listed" ? " active" : ""}" type="button" data-audit-filter="listed">현재 상장</button>
+                <button class="audit-filter${upbitAuditFilter === "report" ? " active" : ""}" type="button" data-audit-filter="report">보고서 전체</button>
+                <button class="audit-filter${upbitAuditFilter === "low" ? " active" : ""}" type="button" data-audit-filter="low">보유비율 미달</button>
+              </div>
+              <form class="audit-search" id="auditSearchForm">
+                <input name="auditQuery" type="search" autocomplete="off" placeholder="코인명·심볼 검색" value="${escapeAttr(upbitAuditQuery)}" />
+                <button type="submit">검색</button>
+                ${upbitAuditQuery ? '<button type="button" data-audit-clear>초기화</button>' : ""}
+              </form>
+              <p class="audit-meta">총 ${formatNumber(filteredRows.length, 0)}개 · ${upbitAuditPage} / ${totalPages} 페이지</p>
+            </div>
+            <p class="audit-note">
+              전산원장은 이용자 위탁 수량(A), 분산원장은 블록체인상 이용자 위탁 수량(B)입니다.
+              보고서 수량은 정수 단위로 반올림되어 0은 0.5개 미만일 수 있습니다.
+              ${missingCount ? `현재 상장 코인 중 기준일 이후 추가되어 보고서에 없는 자산은 ${formatNumber(missingCount, 0)}개이며 “보고서 없음”으로 표시합니다.` : ""}
+            </p>
+            ${visibleRows.length ? `
+              <div class="audit-table-wrap">
+                <table class="audit-table">
+                  <thead>
+                    <tr>
+                      <th class="audit-no">보고서 번호</th>
+                      <th class="audit-coin">코인</th>
+                      <th class="audit-quantity">전산원장 수량 (A)</th>
+                      <th class="audit-quantity">분산원장 수량 (B)</th>
+                      <th class="audit-ratio">보유비율 (B/A)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${visibleRows.map((row) => {
+                      const low = Number.isFinite(row.ratioValue) && row.ratioValue < 100;
+                      return `
+                        <tr>
+                          <td class="audit-no">${row.no ? formatNumber(row.no, 0) : "-"}</td>
+                          <td class="audit-coin">
+                            <strong>${escapeHtml(row.name || row.symbol || "-")}</strong>
+                            <span>${escapeHtml(row.symbol || "-")}${row.listed ? " · 현재 상장" : ""}</span>
+                          </td>
+                          <td class="audit-quantity"><strong>${escapeHtml(row.ledgerQuantity)}</strong><span>전산원장</span></td>
+                          <td class="audit-quantity"><strong>${escapeHtml(row.blockchainQuantity)}</strong><span>분산원장</span></td>
+                          <td class="audit-ratio${low ? " is-low" : ""}">
+                            <strong>${escapeHtml(row.reported ? row.ratio : "보고서 없음")}</strong>
+                            <span>${row.reported ? "분산원장 ÷ 전산원장" : "기준일 이후 상장 가능"}</span>
+                          </td>
+                        </tr>
+                      `;
+                    }).join("")}
+                  </tbody>
+                </table>
+              </div>
+              ${pagesMarkup}
+            ` : '<p class="audit-empty">조건에 맞는 자산이 없습니다.</p>'}
+          </div>
+        `;
+      }
+
       function renderContentPanel() {
         if (state.viewMode === "board") {
           renderFreeBoard();
@@ -8999,6 +9528,10 @@
         }
         if (state.viewMode === "futures") {
           renderFuturesPanel();
+          return;
+        }
+        if (state.viewMode === "audit") {
+          renderAuditPanel();
           return;
         }
         renderNewsPanel();
@@ -10183,6 +10716,7 @@
       boardToggleBtn.textContent = TEXT.boardOpen;
       rankingToggleBtn.textContent = TEXT.rankingOpen;
       futuresToggleBtn.textContent = TEXT.futuresOpen;
+      auditToggleBtn.textContent = TEXT.auditOpen;
       baseBoardSelect.querySelector('option[value="binance"]').textContent = TEXT.tabBinance;
       baseBoardSelect.querySelector('option[value="upbit"]').textContent = TEXT.tabUpbit;
       baseBoardSelect.querySelector('option[value="bithumb"]').textContent = TEXT.tabBithumb;
@@ -10772,6 +11306,7 @@
           board: TEXT.boardOpen,
           ranking: TEXT.rankingOpen,
           futures: TEXT.futuresOpen,
+          audit: TEXT.auditOpen,
         };
         return labels[item] || item;
       }
@@ -12119,7 +12654,7 @@
       }
 
       function renderCurrentView() {
-        if (state.viewMode === "news" || state.viewMode === "board" || state.viewMode === "ranking" || state.viewMode === "futures") {
+        if (state.viewMode === "news" || state.viewMode === "board" || state.viewMode === "ranking" || state.viewMode === "futures" || state.viewMode === "audit") {
           renderContentPanel();
           return;
         }
@@ -12246,6 +12781,9 @@
           futuresQuery,
           futuresPage,
           futuresSortDirection,
+          upbitAuditFilter,
+          upbitAuditQuery,
+          upbitAuditPage,
         };
       }
 
@@ -12306,34 +12844,45 @@
         futuresQuery = String(payload.futuresQuery || "").slice(0, 80);
         futuresPage = Math.max(1, Math.floor(Number(payload.futuresPage) || 1));
         futuresSortDirection = payload.futuresSortDirection === "asc" ? "asc" : "desc";
+        upbitAuditFilter = ["listed", "report", "low"].includes(payload.upbitAuditFilter)
+          ? String(payload.upbitAuditFilter)
+          : "listed";
+        upbitAuditQuery = String(payload.upbitAuditQuery || "").slice(0, 80);
+        upbitAuditPage = Math.max(1, Math.floor(Number(payload.upbitAuditPage) || 1));
         setViewMode(payload.viewMode, { writeHistory: false });
         isApplyingHistoryState = false;
         saveAppViewState();
       }
 
       function setViewMode(mode, options = {}) {
-        state.viewMode = ["news", "board", "ranking", "futures"].includes(mode) ? mode : "market";
+        state.viewMode = ["news", "board", "ranking", "futures", "audit"].includes(mode) ? mode : "market";
         const isMarketMode = state.viewMode === "market";
         const isNewsMode = state.viewMode === "news";
         const isBoardMode = state.viewMode === "board";
         const isRankingMode = state.viewMode === "ranking";
         const isFuturesMode = state.viewMode === "futures";
+        const isAuditMode = state.viewMode === "audit";
         appShell.classList.toggle("news-mode", isNewsMode);
         appShell.classList.toggle("board-mode", isBoardMode);
         appShell.classList.toggle("ranking-mode", isRankingMode);
         appShell.classList.toggle("futures-mode", isFuturesMode);
+        appShell.classList.toggle("audit-mode", isAuditMode);
         marketToggleBtn.classList.toggle("active", isMarketMode);
         newsToggleBtn.classList.toggle("active", isNewsMode);
         boardToggleBtn.classList.toggle("active", isBoardMode);
         rankingToggleBtn.classList.toggle("active", isRankingMode);
         futuresToggleBtn.classList.toggle("active", isFuturesMode);
+        auditToggleBtn.classList.toggle("active", isAuditMode);
         if (isMarketMode) {
           scheduleMarketChart();
         } else {
           destroyMarketChart();
         }
-        if (isNewsMode || isBoardMode || isRankingMode || isFuturesMode) {
+        if (isNewsMode || isBoardMode || isRankingMode || isFuturesMode || isAuditMode) {
           renderContentPanel();
+        }
+        if (isAuditMode) {
+          requestUpbitAuditData();
         }
         if (isNewsMode) {
           requestLiveNewsRefresh(true);
@@ -12744,6 +13293,17 @@
       });
 
       newsPanel.addEventListener("submit", async (event) => {
+        const auditSearchForm = event.target.closest("#auditSearchForm");
+        if (auditSearchForm) {
+          event.preventDefault();
+          const formData = new FormData(auditSearchForm);
+          upbitAuditQuery = String(formData.get("auditQuery") || "").trim().slice(0, 80);
+          upbitAuditPage = 1;
+          renderAuditPanel();
+          writeAppHistoryState(true);
+          return;
+        }
+
         const futuresSearchForm = event.target.closest("#futuresSearchForm");
         if (futuresSearchForm) {
           event.preventDefault();
@@ -13054,6 +13614,43 @@
       newsPanel.addEventListener("click", async (event) => {
         const clickTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
         if (!clickTarget) return;
+
+        if (clickTarget.closest("[data-audit-retry]")) {
+          upbitAuditError = "";
+          upbitAuditData = null;
+          renderAuditPanel();
+          requestUpbitAuditData(true);
+          return;
+        }
+
+        const auditFilterButton = clickTarget.closest("[data-audit-filter]");
+        if (auditFilterButton) {
+          const nextFilter = String(auditFilterButton.dataset.auditFilter || "");
+          if (["listed", "report", "low"].includes(nextFilter)) {
+            upbitAuditFilter = nextFilter;
+            upbitAuditPage = 1;
+            renderAuditPanel();
+            writeAppHistoryState(true);
+          }
+          return;
+        }
+
+        if (clickTarget.closest("[data-audit-clear]")) {
+          upbitAuditQuery = "";
+          upbitAuditPage = 1;
+          renderAuditPanel();
+          writeAppHistoryState(true);
+          return;
+        }
+
+        const auditPageButton = clickTarget.closest("[data-audit-page]");
+        if (auditPageButton) {
+          upbitAuditPage = Math.max(1, Math.floor(Number(auditPageButton.dataset.auditPage) || 1));
+          renderAuditPanel();
+          writeAppHistoryState(true);
+          newsPanel.querySelector(".audit-shell")?.scrollIntoView({ block: "start" });
+          return;
+        }
 
         const richCommandButton = clickTarget.closest("[data-free-board-rich-command]");
         if (richCommandButton) {
@@ -13641,6 +14238,11 @@
       futuresToggleBtn.addEventListener("click", () => {
         futuresPage = 1;
         setViewMode("futures");
+      });
+
+      auditToggleBtn.addEventListener("click", () => {
+        upbitAuditPage = 1;
+        setViewMode("audit");
       });
 
       window.addEventListener("popstate", (event) => {

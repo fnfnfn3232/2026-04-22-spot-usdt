@@ -57,9 +57,9 @@ const GITHUB_OIDC_JWKS_URL = `${GITHUB_OIDC_ISSUER}/.well-known/jwks`;
 const GITHUB_OIDC_REPOSITORY = "fnfnfn3232/coin";
 const GITHUB_OIDC_AUDIENCE = "coin-board-auth-market-data";
 const SCREEN_MARKET_BOARDS = ["binance", "upbit", "bithumb", "coinbase"];
-const SCREEN_NAV_ITEMS = ["market", "news", "board", "ranking", "futures"];
+const SCREEN_NAV_ITEMS = ["market", "news", "board", "ranking", "futures", "audit"];
 const DEFAULT_SCREEN_SETTINGS = {
-  navOrder: ["market", "news", "board", "ranking", "futures"],
+  navOrder: ["market", "news", "board", "ranking", "futures", "audit"],
   boardOrder: ["binance", "upbit", "bithumb", "coinbase"],
   statusPosition: "summary",
   visibleStats: {
