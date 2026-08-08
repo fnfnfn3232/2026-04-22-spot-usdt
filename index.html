@@ -5623,6 +5623,13 @@
     const ADMIN_TRAFFIC_KEY = "fdv_admin_traffic_v1";
     const USAGE_BEACON_SENT_KEY = "fdv_usage_beacon_sent_v1";
     const SERVER_AUTH_API_BASE = String(window.SERVER_AUTH_API_BASE || "").replace(/\/+$/, "");
+    let serverAuthMemoryToken = "";
+    try {
+      serverAuthMemoryToken = String(localStorage.getItem(SERVER_AUTH_TOKEN_KEY) || "");
+      localStorage.removeItem(SERVER_AUTH_TOKEN_KEY);
+    } catch (_error) {
+      serverAuthMemoryToken = "";
+    }
     const APP_VIEW_STATE_KEY = "fdv_app_view_state_v1";
     const SCREEN_SETTINGS_KEY = "fdv_screen_settings_v1";
     const MARKET_SOURCE_VISIBLE_KEY = "fdv_market_source_visible_v1";
@@ -6117,23 +6124,15 @@
       }
 
       function getServerAuthToken() {
-        try {
-          return String(localStorage.getItem(SERVER_AUTH_TOKEN_KEY) || "");
-        } catch (_error) {
-          return "";
-        }
+        return serverAuthMemoryToken;
       }
 
       function setServerAuthToken(token) {
+        serverAuthMemoryToken = String(token || "");
         try {
-          const value = String(token || "");
-          if (value) {
-            localStorage.setItem(SERVER_AUTH_TOKEN_KEY, value);
-          } else {
-            localStorage.removeItem(SERVER_AUTH_TOKEN_KEY);
-          }
+          localStorage.removeItem(SERVER_AUTH_TOKEN_KEY);
         } catch (_error) {
-          // If storage is unavailable, the Worker cookie remains as a fallback.
+          // The in-memory token and HttpOnly Worker cookie remain available.
         }
       }
 
@@ -6476,7 +6475,7 @@
         lockEmailAddressInput.disabled = true;
         lockEmailRequestBtn.disabled = true;
         const destination = emailOtpMaskedEmail ? `${emailOtpMaskedEmail}으로 ` : "";
-        setEmailLoginStatus(`${destination}인증번호를 보냈습니다. ${remainingSeconds}초 안에 입력해 주세요.`);
+        setEmailLoginStatus(`${destination}등록된 주소라면 인증번호가 전송됩니다. ${remainingSeconds}초 안에 입력해 주세요.`);
       }
 
       function startEmailOtpTimer() {
@@ -6541,7 +6540,7 @@
         if (message === "email_otp_attempts_exceeded") return "입력 횟수를 초과했습니다. 새 코드를 받아 주세요.";
         if (message === "email_otp_rate_limited") return `${retryAfter}초 후 새 인증번호를 받을 수 있습니다.`;
         if (message === "email_otp_hourly_limit") return "이메일 요청 횟수가 많습니다. 잠시 후 다시 시도해 주세요.";
-        if (message === "invalid_email_destination") return "등록된 이메일 주소가 아닙니다. 주소를 확인해 주세요.";
+        if (message === "invalid_email_destination") return "이메일 인증 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
         if (message === "email_send_failed") return "인증 이메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.";
         return "이메일 인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
       }
@@ -10400,10 +10399,7 @@
 
         siteLockCheckPromise = (async () => {
           const until = getLockAuthUntil();
-          if (until > Date.now()) {
-            hideSiteLock();
-            renderLockTtl();
-          }
+          renderLockTtl();
 
           try {
             await verifyServerSession();
@@ -10418,7 +10414,7 @@
             console.error(error);
             if (isServerAuthExpiredError(error)) {
               handleServerAuthExpired();
-            } else if (until <= Date.now()) {
+            } else {
               renderLockTtl();
               showSiteLock();
               lockError.textContent = "인증 서버에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.";

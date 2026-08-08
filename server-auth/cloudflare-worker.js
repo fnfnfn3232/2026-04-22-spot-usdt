@@ -1,5 +1,6 @@
 const COINNESS_NEWS_ENDPOINT = "https://api.coinness.com/feed/v1/breaking-news";
 const COOKIE_NAME = "coin_board_session";
+const PARTITIONED_COOKIE_NAME = "__Host-coin_board_session_partitioned";
 const SESSION_TTL_SECONDS = 24 * 60 * 60;
 const BOARD_POSTS_KEY = "free-board-posts";
 const BOARD_ADMIN_LOGS_KEY = "free-board-admin-logs";
@@ -12,7 +13,7 @@ const SCREEN_SETTINGS_KEY = "screen-settings-v1";
 const LOGIN_ATTEMPT_KEY_PREFIX = "login-attempt:";
 const EMAIL_OTP_KEY_PREFIX = "email-login-otp:";
 const EMAIL_OTP_RATE_KEY_PREFIX = "email-login-rate:";
-const EMAIL_OTP_CURRENT_KEY = "email-login-current";
+const EMAIL_OTP_CURRENT_KEY_PREFIX = "email-login-current:";
 const EMAIL_OTP_GLOBAL_RATE_KEY = "email-login-global-rate";
 const BOARD_MAX_POSTS = 200;
 const BOARD_MAX_MEDIA = 10;
@@ -491,6 +492,19 @@ async function getEmailOtpHash(requestId, code, env) {
   return hmacHex(env.SESSION_SECRET, `${requestId}.${code}`);
 }
 
+async function getEmailOtpCurrentKey(recipient) {
+  return `${EMAIL_OTP_CURRENT_KEY_PREFIX}${await sha256Hex(recipient)}`;
+}
+
+async function clearCurrentEmailOtp(storage, record, requestId) {
+  const currentKey = String(record?.currentKey || "");
+  if (!currentKey) return;
+  const currentRequestId = String(await storage.get(currentKey) || "");
+  if (currentRequestId === requestId) {
+    await storage.delete(currentKey);
+  }
+}
+
 async function sendEmailOtp(code, requestId, recipient, env) {
   if (!isEmailLoginConfigured(env)) {
     throw new Error("email_login_not_configured");
@@ -557,6 +571,20 @@ function sessionCookie(token) {
   return `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=${SESSION_TTL_SECONDS}`;
 }
 
+function partitionedSessionCookie(token) {
+  return `${PARTITIONED_COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=None; Partitioned; Path=/; Max-Age=${SESSION_TTL_SECONDS}`;
+}
+
+function appendSessionCookies(headers, token) {
+  headers.append("Set-Cookie", sessionCookie(token));
+  headers.append("Set-Cookie", partitionedSessionCookie(token));
+}
+
+function appendClearedSessionCookies(headers) {
+  headers.append("Set-Cookie", `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=0`);
+  headers.append("Set-Cookie", `${PARTITIONED_COOKIE_NAME}=; HttpOnly; Secure; SameSite=None; Partitioned; Path=/; Max-Age=0`);
+}
+
 function sessionPayload(token) {
   const expiresAt = Number(String(token || "").split(".")[0]) * 1000;
   return {
@@ -564,10 +592,6 @@ function sessionPayload(token) {
     token,
     expiresAt: Number.isFinite(expiresAt) ? expiresAt : 0,
   };
-}
-
-async function createSessionCookie(env) {
-  return sessionCookie(await createSessionToken(env));
 }
 
 async function isValidSessionToken(token, env) {
@@ -581,10 +605,15 @@ async function isValidSessionToken(token, env) {
 }
 
 async function isAuthenticated(request, env) {
-  const cookieToken = getCookie(request, COOKIE_NAME);
+  const cookieTokens = [
+    getCookie(request, COOKIE_NAME),
+    getCookie(request, PARTITIONED_COOKIE_NAME),
+  ].filter(Boolean);
   const bearerToken = getBearerToken(request);
-  if (cookieToken && await isValidSessionToken(cookieToken, env)) return true;
-  if (bearerToken && bearerToken !== cookieToken && await isValidSessionToken(bearerToken, env)) return true;
+  for (const cookieToken of cookieTokens) {
+    if (await isValidSessionToken(cookieToken, env)) return true;
+  }
+  if (bearerToken && !cookieTokens.includes(bearerToken) && await isValidSessionToken(bearerToken, env)) return true;
   return false;
 }
 
@@ -1807,13 +1836,13 @@ async function handleLogin(request, env) {
   }
   const token = await createSessionToken(env);
   const headers = new Headers(jsonResponse({ ok: true }, 200, env).headers);
-  headers.append("Set-Cookie", sessionCookie(token));
+  appendSessionCookies(headers, token);
   return new Response(JSON.stringify(sessionPayload(token)), { status: 200, headers });
 }
 
 function handleLogout(env) {
   const headers = new Headers(jsonResponse({ ok: true }, 200, env).headers);
-  headers.append("Set-Cookie", `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=0`);
+  appendClearedSessionCookies(headers);
   return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
 }
 
@@ -1822,7 +1851,7 @@ async function handleSession(request, env) {
   if (authResponse) return authResponse;
   const token = await createSessionToken(env);
   const headers = new Headers(jsonResponse({ ok: true }, 200, env).headers);
-  headers.append("Set-Cookie", sessionCookie(token));
+  appendSessionCookies(headers, token);
   return new Response(JSON.stringify(sessionPayload(token)), { status: 200, headers });
 }
 
@@ -2469,7 +2498,7 @@ export class BoardStore {
     await this.state.storage.delete(attemptKey);
     const token = await createSessionToken(this.env);
     const headers = new Headers(jsonResponse({ ok: true }, 200, this.env).headers);
-    headers.append("Set-Cookie", sessionCookie(token));
+    appendSessionCookies(headers, token);
     return new Response(JSON.stringify(sessionPayload(token)), { status: 200, headers });
   }
 
@@ -2484,10 +2513,8 @@ export class BoardStore {
     } catch (_error) {
       return jsonResponse({ error: "invalid_json" }, 400, this.env);
     }
-    const recipient = getAllowedEmailLoginDestination(body.email, this.env);
-    if (!recipient) {
-      return jsonResponse({ error: "invalid_email_destination" }, 400, this.env);
-    }
+    const requestedEmail = normalizeEmailAddress(body.email);
+    const recipient = getAllowedEmailLoginDestination(requestedEmail, this.env);
 
     const now = Date.now();
     const clientIpHash = await sha256Hex(getForwardedLoginClientIp(request));
@@ -2528,29 +2555,9 @@ export class BoardStore {
       return jsonResponse({ error: "email_otp_hourly_limit", retryAfterSeconds }, 429, this.env);
     }
 
-    const previousRequestId = String(await this.state.storage.get(EMAIL_OTP_CURRENT_KEY) || "");
     const requestId = crypto.randomUUID();
-    const code = generateEmailOtpCode();
-
-    try {
-      await sendEmailOtp(code, requestId, recipient, this.env);
-    } catch (error) {
-      return jsonResponse({
-        error: error instanceof Error ? error.message : "email_send_failed",
-      }, 503, this.env);
-    }
-
     const sentAt = Date.now();
     const expiresAt = sentAt + EMAIL_OTP_TTL_MS;
-    if (previousRequestId) {
-      await this.state.storage.delete(`${EMAIL_OTP_KEY_PREFIX}${previousRequestId}`);
-    }
-    await this.state.storage.put(`${EMAIL_OTP_KEY_PREFIX}${requestId}`, {
-      codeHash: await getEmailOtpHash(requestId, code, this.env),
-      expiresAt,
-      attempts: 0,
-    });
-    await this.state.storage.put(EMAIL_OTP_CURRENT_KEY, requestId);
     await this.state.storage.put(rateKey, {
       windowStartedAt: inCurrentWindow ? windowStartedAt : now,
       count: hourlyCount + 1,
@@ -2562,11 +2569,36 @@ export class BoardStore {
       lastSentAt: sentAt,
     });
 
+    const currentKey = await getEmailOtpCurrentKey(recipient || requestedEmail || requestId);
+    const previousRequestId = String(await this.state.storage.get(currentKey) || "");
+    const code = generateEmailOtpCode();
+
+    if (recipient) {
+      try {
+        await sendEmailOtp(code, requestId, recipient, this.env);
+      } catch (error) {
+        return jsonResponse({
+          error: error instanceof Error ? error.message : "email_send_failed",
+        }, 503, this.env);
+      }
+    }
+
+    if (previousRequestId) {
+      await this.state.storage.delete(`${EMAIL_OTP_KEY_PREFIX}${previousRequestId}`);
+    }
+    await this.state.storage.put(`${EMAIL_OTP_KEY_PREFIX}${requestId}`, {
+      codeHash: await getEmailOtpHash(requestId, code, this.env),
+      expiresAt,
+      attempts: 0,
+      currentKey,
+    });
+    await this.state.storage.put(currentKey, requestId);
+
     return jsonResponse({
       ok: true,
       requestId,
       expiresAt,
-      maskedEmail: maskEmailAddress(recipient),
+      maskedEmail: maskEmailAddress(requestedEmail),
     }, 200, this.env);
   }
 
@@ -2591,6 +2623,7 @@ export class BoardStore {
     const record = await this.state.storage.get(otpKey);
     if (!record || Number(record.expiresAt) <= Date.now()) {
       await this.state.storage.delete(otpKey);
+      await clearCurrentEmailOtp(this.state.storage, record, requestId);
       return jsonResponse({ error: "email_otp_expired" }, 401, this.env);
     }
 
@@ -2603,7 +2636,7 @@ export class BoardStore {
       const nextAttempts = attempts + 1;
       if (nextAttempts >= EMAIL_OTP_VERIFY_LIMIT) {
         await this.state.storage.delete(otpKey);
-        await this.state.storage.delete(EMAIL_OTP_CURRENT_KEY);
+        await clearCurrentEmailOtp(this.state.storage, record, requestId);
         return jsonResponse({ error: "email_otp_attempts_exceeded" }, 401, this.env);
       }
       await this.state.storage.put(otpKey, { ...record, attempts: nextAttempts });
@@ -2614,10 +2647,10 @@ export class BoardStore {
     }
 
     await this.state.storage.delete(otpKey);
-    await this.state.storage.delete(EMAIL_OTP_CURRENT_KEY);
+    await clearCurrentEmailOtp(this.state.storage, record, requestId);
     const token = await createSessionToken(this.env);
     const headers = new Headers(jsonResponse({ ok: true }, 200, this.env).headers);
-    headers.append("Set-Cookie", sessionCookie(token));
+    appendSessionCookies(headers, token);
     return new Response(JSON.stringify(sessionPayload(token)), { status: 200, headers });
   }
 
