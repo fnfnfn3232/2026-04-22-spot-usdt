@@ -11068,6 +11068,16 @@
         return map[board] || board || "-";
       }
 
+      function boardShortLabel(board) {
+        const map = {
+          binance: "바이낸스",
+          upbit: "업비트",
+          bithumb: "빗썸",
+          coinbase: "코인베이스",
+        };
+        return map[board] || board || "";
+      }
+
       function getComparableSymbol(row) {
         const compareSymbol = String(row?.compareSymbol || "").toUpperCase();
         if (compareSymbol) return compareSymbol;
@@ -13186,6 +13196,16 @@
         return;
       }
 
+      const activeCompareBoards = getActiveCompareBoards();
+      const riskBoards = state.board === "triple"
+        ? ["upbit", "bithumb", "binance", "coinbase"]
+        : [state.board, ...activeCompareBoards];
+      const showRiskExchange = riskBoards.length > 1;
+      const riskRowsByBoard = new Map(riskBoards.map((board) => [
+        board,
+        new Map(getBoardRows(board).map((item) => [getComparableSymbol(item), item])),
+      ]));
+
       tableBody.innerHTML = rows
         .map((row, index) => {
           const rank = (state.page - 1) * PAGE_SIZE + index + 1;
@@ -13195,16 +13215,22 @@
           const sourceDetailText = sourceDetailLabel(row.capSourceDetail);
           const coinSymbol = getComparableSymbol(row);
           const displayName = getDisplayName(row, state.board);
-          const riskFlags = Array.isArray(row.riskFlags) ? row.riskFlags : [];
+          const riskFlags = riskBoards.flatMap((board) => {
+            const boardRow = riskRowsByBoard.get(board)?.get(coinSymbol);
+            const flags = Array.isArray(boardRow?.riskFlags) ? boardRow.riskFlags : [];
+            return flags.map((flag) => ({ ...flag, board }));
+          });
           const riskBadges = riskFlags.length
             ? `<span class="asset-risk-badges">${riskFlags.map((flag) => {
                 const type = ["warning", "monitoring", "delisting"].includes(String(flag?.type || ""))
                   ? String(flag.type)
                   : "warning";
                 const label = String(flag?.label || "유의");
-                const detail = String(flag?.detail || label);
+                const exchangeLabel = boardShortLabel(flag?.board);
+                const badgeLabel = showRiskExchange && exchangeLabel ? `${exchangeLabel} ${label}` : label;
+                const detail = `${exchangeLabel ? `${exchangeLabel} · ` : ""}${String(flag?.detail || label)}`;
                 const url = String(flag?.url || "");
-                const content = escapeHtml(label);
+                const content = escapeHtml(badgeLabel);
                 return url && /^https?:\/\//i.test(url)
                   ? `<a class="asset-risk-badge ${escapeAttr(type)}" href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer" title="${escapeAttr(detail)}">${content}</a>`
                   : `<span class="asset-risk-badge ${escapeAttr(type)}" title="${escapeAttr(detail)}">${content}</span>`;
