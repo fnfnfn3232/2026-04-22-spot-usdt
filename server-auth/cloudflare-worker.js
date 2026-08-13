@@ -752,6 +752,7 @@ function normalizePasswordHash(value) {
 function normalizeBoardComment(raw, fallback = {}) {
   const createdAt = Number(raw?.createdAt || fallback.createdAt || Date.now());
   const body = cleanBoardText(raw?.body, 3000);
+  const parentId = cleanBoardText(raw?.parentId || raw?.replyToId || fallback.parentId, 80);
   if (!body) return null;
   return {
     id: cleanBoardText(raw?.id || fallback.id || `comment-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`, 80),
@@ -759,6 +760,7 @@ function normalizeBoardComment(raw, fallback = {}) {
     body,
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
     passwordHash: normalizePasswordHash(raw?.passwordHash),
+    ...(parentId ? { parentId, depth: 1 } : {}),
   };
 }
 

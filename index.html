@@ -2268,7 +2268,7 @@
         min-width: 0;
         color: #f6fbff;
         font-size: 15px;
-        font-weight: 800;
+        font-weight: 400;
         line-height: 1.35;
         overflow-wrap: anywhere;
       }
@@ -2337,7 +2337,7 @@
         background: transparent;
         color: #f1e0bd;
         text-align: left;
-        font-weight: 750;
+        font-weight: 400;
         line-height: 1.45;
       }
 
@@ -5143,10 +5143,21 @@
       .free-board-rich-btn,
       .free-board-rich-select,
       .free-board-tool-btn,
-      .free-board-compose-attachment-item,
-      .free-board-comment {
+      .free-board-compose-attachment-item {
         background: #f7f9fa;
         color: var(--text);
+      }
+
+      .free-board-comment {
+        background: transparent;
+        color: var(--text);
+      }
+
+      .free-board-comment.is-reply {
+        margin-left: 36px;
+        padding-right: 14px;
+        padding-left: 14px;
+        background: #f7f9fa;
       }
 
       .free-board-body {
@@ -5170,7 +5181,7 @@
 
       .free-board-title-cell .free-board-title-btn {
         color: #10242d;
-        font-weight: 850;
+        font-weight: 400;
       }
 
       .free-board-table-wrap {
@@ -5886,6 +5897,11 @@
 
       .shell.board-mode .free-board-title-cell .free-board-title-btn {
         color: #14233b;
+        font-weight: 400;
+      }
+
+      .shell.board-mode .free-board-mobile-title {
+        font-weight: 400;
       }
 
       .shell.board-mode .free-board-title-cell .free-board-title-btn:hover {
@@ -9446,8 +9462,9 @@
           ? comments.map((comment) => {
             const commentId = String(comment.id || "");
             const showDeleteAuth = commentId && freeBoardCommentDeleteAuthId === commentId;
+            const isReply = Boolean(comment.parentId || comment.replyToId || Number(comment.depth) > 0);
             return `
-              <div class="free-board-comment${showDeleteAuth ? " is-delete-auth-open" : ""}">
+              <div class="free-board-comment${isReply ? " is-reply" : ""}${showDeleteAuth ? " is-delete-auth-open" : ""}">
                 <div class="free-board-comment-head">
                   <span class="free-board-comment-author">${escapeHtml(comment.author || "익명")}</span>
                   <span class="free-board-comment-time">${escapeHtml(formatFreeBoardDetailTime(comment.createdAt))}</span>
