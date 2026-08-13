@@ -58,9 +58,9 @@ const GITHUB_OIDC_JWKS_URL = `${GITHUB_OIDC_ISSUER}/.well-known/jwks`;
 const GITHUB_OIDC_REPOSITORY = "fnfnfn3232/coin";
 const GITHUB_OIDC_AUDIENCE = "coin-board-auth-market-data";
 const SCREEN_MARKET_BOARDS = ["binance", "upbit", "bithumb", "coinbase"];
-const SCREEN_NAV_ITEMS = ["market", "news", "board", "ranking", "futures", "audit"];
+const SCREEN_NAV_ITEMS = ["market", "news", "board", "resources"];
 const DEFAULT_SCREEN_SETTINGS = {
-  navOrder: ["market", "news", "board", "ranking", "futures", "audit"],
+  navOrder: ["market", "news", "board", "resources"],
   boardOrder: ["binance", "upbit", "bithumb", "coinbase"],
   statusPosition: "summary",
   visibleStats: {
@@ -645,7 +645,10 @@ function cleanBoardText(value, maxChars) {
 function normalizeScreenSettings(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
   const rawNavOrder = Array.isArray(source.navOrder) ? source.navOrder : DEFAULT_SCREEN_SETTINGS.navOrder;
-  const navOrder = rawNavOrder.filter(
+  const migratedNavOrder = rawNavOrder.map((item) =>
+    ["ranking", "futures", "audit"].includes(item) ? "resources" : item
+  );
+  const navOrder = migratedNavOrder.filter(
     (item, index, values) => SCREEN_NAV_ITEMS.includes(item) && values.indexOf(item) === index
   );
   SCREEN_NAV_ITEMS.forEach((item) => {

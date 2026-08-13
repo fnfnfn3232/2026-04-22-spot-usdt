@@ -5309,8 +5309,8 @@
       .intel-header-inner {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 28px;
+        justify-content: flex-start;
+        gap: 46px;
         width: min(1240px, calc(100% - 40px));
         min-height: 76px;
         margin: 0 auto;
@@ -5352,10 +5352,76 @@
       .intel-header .view-switch {
         display: flex;
         align-items: center;
-        justify-content: flex-end;
+        justify-content: flex-start;
         gap: 28px;
         min-width: 0;
         margin: 0;
+      }
+
+      .intel-header .nav-dropdown {
+        position: relative;
+        display: flex;
+        min-height: 76px;
+        align-items: center;
+      }
+
+      .intel-header .nav-dropdown-menu {
+        position: absolute;
+        top: calc(100% - 1px);
+        left: 50%;
+        z-index: 50;
+        display: grid;
+        min-width: 174px;
+        padding: 8px;
+        border: 1px solid #dde4ed;
+        border-radius: 6px;
+        background: #ffffff;
+        box-shadow: 0 18px 44px rgba(16, 31, 56, 0.15);
+        opacity: 0;
+        pointer-events: none;
+        transform: translate(-50%, 8px);
+        transition: opacity 150ms ease, transform 150ms ease;
+      }
+
+      .intel-header .nav-dropdown:hover .nav-dropdown-menu,
+      .intel-header .nav-dropdown.is-open .nav-dropdown-menu {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translate(-50%, 0);
+      }
+
+      .intel-header .nav-dropdown-menu button {
+        width: 100%;
+        min-height: 42px;
+        padding: 0 14px;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: #516079;
+        font-size: 14px;
+        font-weight: 700;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .intel-header .nav-dropdown-menu button:hover,
+      .intel-header .nav-dropdown-menu button:focus-visible,
+      .intel-header .nav-dropdown-menu button.active {
+        background: #f1f5ff;
+        color: #2858db;
+        outline: none;
+      }
+
+      .intel-header .nav-dropdown-caret {
+        display: inline-block;
+        margin-left: 5px;
+        font-size: 10px;
+        transition: transform 150ms ease;
+      }
+
+      .intel-header .nav-dropdown:hover .nav-dropdown-caret,
+      .intel-header .nav-dropdown.is-open .nav-dropdown-caret {
+        transform: rotate(180deg);
       }
 
       .intel-header .view-link {
@@ -5640,17 +5706,27 @@
         .intel-header .view-switch {
           justify-content: flex-start;
           width: 100%;
-          overflow-x: auto;
-          scrollbar-width: none;
+          overflow: visible;
         }
 
-        .intel-header .view-switch::-webkit-scrollbar {
-          display: none;
+        .intel-header .nav-dropdown {
+          min-height: 54px;
         }
 
         .intel-header .view-link {
           min-height: 54px;
           white-space: nowrap;
+        }
+
+        .intel-header .nav-dropdown-menu {
+          right: 0;
+          left: auto;
+          transform: translateY(8px);
+        }
+
+        .intel-header .nav-dropdown:hover .nav-dropdown-menu,
+        .intel-header .nav-dropdown.is-open .nav-dropdown-menu {
+          transform: translateY(0);
         }
 
         .shell > .hero {
@@ -5789,9 +5865,16 @@
         <button class="view-link" id="marketToggleBtn" type="button" data-view-nav="market"></button>
         <button class="view-link" id="newsToggleBtn" type="button" data-view-nav="news"></button>
         <button class="view-link" id="boardToggleBtn" type="button" data-view-nav="board"></button>
-        <button class="view-link" id="rankingToggleBtn" type="button" data-view-nav="ranking"></button>
-        <button class="view-link" id="futuresToggleBtn" type="button" data-view-nav="futures"></button>
-        <button class="view-link" id="auditToggleBtn" type="button" data-view-nav="audit"></button>
+        <div class="nav-dropdown" id="resourcesMenu" data-view-nav="resources">
+          <button class="view-link" id="resourcesMenuBtn" type="button" aria-haspopup="true" aria-expanded="false">
+            자료<span class="nav-dropdown-caret" aria-hidden="true">▼</span>
+          </button>
+          <div class="nav-dropdown-menu" id="resourcesMenuList" role="menu" aria-label="자료 하위 메뉴">
+            <button id="futuresToggleBtn" type="button" role="menuitem"></button>
+            <button id="rankingToggleBtn" type="button" role="menuitem"></button>
+            <button id="auditToggleBtn" type="button" role="menuitem"></button>
+          </div>
+        </div>
       </div>
     </div>
   </header>
@@ -6182,7 +6265,7 @@
     const SCREEN_SETTINGS_KEY = "fdv_screen_settings_v1";
     const MARKET_SOURCE_VISIBLE_KEY = "fdv_market_source_visible_v1";
     const MARKET_BOARDS = ["binance", "upbit", "bithumb", "coinbase"];
-    const SCREEN_NAV_ITEMS = ["market", "news", "board", "ranking", "futures", "audit"];
+    const SCREEN_NAV_ITEMS = ["market", "news", "board", "resources"];
     const UPBIT_AUDIT_DATA_URL = "./upbit-audit-202607.json";
     const UPBIT_AUDIT_PAGE_SIZE = 50;
     const MARKET_CHARTS = {
@@ -6209,7 +6292,7 @@
       },
     };
     const SCREEN_SETTINGS_DEFAULT = {
-      navOrder: ["market", "news", "board", "ranking", "futures", "audit"],
+      navOrder: ["market", "news", "board", "resources"],
       boardOrder: ["binance", "upbit", "bithumb", "coinbase"],
       statusPosition: "summary",
       visibleStats: {
@@ -6479,6 +6562,8 @@
       const rankingToggleBtn = document.getElementById("rankingToggleBtn");
       const futuresToggleBtn = document.getElementById("futuresToggleBtn");
       const auditToggleBtn = document.getElementById("auditToggleBtn");
+      const resourcesMenu = document.getElementById("resourcesMenu");
+      const resourcesMenuBtn = document.getElementById("resourcesMenuBtn");
       const screenSettingsSaveBtn = document.getElementById("screenSettingsSaveBtn");
       const screenSettingsResetBtn = document.getElementById("screenSettingsResetBtn");
       const screenSettingsMenuOrder = document.getElementById("screenSettingsMenuOrder");
@@ -11854,7 +11939,10 @@
       function normalizeScreenSettings(raw) {
         const source = raw && typeof raw === "object" ? raw : {};
         const rawNavOrder = Array.isArray(source.navOrder) ? source.navOrder : SCREEN_SETTINGS_DEFAULT.navOrder;
-        const navOrder = rawNavOrder.filter(
+        const migratedNavOrder = rawNavOrder.map((item) =>
+          ["ranking", "futures", "audit"].includes(item) ? "resources" : item
+        );
+        const navOrder = migratedNavOrder.filter(
           (item, index, values) => SCREEN_NAV_ITEMS.includes(item) && values.indexOf(item) === index
         );
         SCREEN_NAV_ITEMS.forEach((item) => {
@@ -11946,9 +12034,7 @@
           market: TEXT.marketOpen,
           news: TEXT.newsOpen,
           board: TEXT.boardOpen,
-          ranking: TEXT.rankingOpen,
-          futures: TEXT.futuresOpen,
-          audit: TEXT.auditOpen,
+          resources: "자료",
         };
         return labels[item] || item;
       }
@@ -13519,6 +13605,10 @@
         rankingToggleBtn.classList.toggle("active", isRankingMode);
         futuresToggleBtn.classList.toggle("active", isFuturesMode);
         auditToggleBtn.classList.toggle("active", isAuditMode);
+        const isResourcesMode = isRankingMode || isFuturesMode || isAuditMode;
+        resourcesMenuBtn?.classList.toggle("active", isResourcesMode);
+        resourcesMenu?.classList.remove("is-open");
+        resourcesMenuBtn?.setAttribute("aria-expanded", "false");
         if (isMarketMode) {
           scheduleMarketChart();
         } else {
@@ -14911,6 +15001,26 @@
       boardToggleBtn.addEventListener("click", () => {
         resetFreeBoardToList();
         setViewMode("board");
+      });
+
+      resourcesMenuBtn?.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const isOpen = !resourcesMenu?.classList.contains("is-open");
+        resourcesMenu?.classList.toggle("is-open", isOpen);
+        resourcesMenuBtn.setAttribute("aria-expanded", String(isOpen));
+      });
+
+      document.addEventListener("click", (event) => {
+        if (resourcesMenu?.contains(event.target)) return;
+        resourcesMenu?.classList.remove("is-open");
+        resourcesMenuBtn?.setAttribute("aria-expanded", "false");
+      });
+
+      resourcesMenu?.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        resourcesMenu.classList.remove("is-open");
+        resourcesMenuBtn?.setAttribute("aria-expanded", "false");
+        resourcesMenuBtn?.focus();
       });
 
       rankingToggleBtn.addEventListener("click", () => {
