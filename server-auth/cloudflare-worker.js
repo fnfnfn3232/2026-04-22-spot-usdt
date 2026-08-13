@@ -59,8 +59,16 @@ const GITHUB_OIDC_REPOSITORY = "fnfnfn3232/coin";
 const GITHUB_OIDC_AUDIENCE = "coin-board-auth-market-data";
 const SCREEN_MARKET_BOARDS = ["binance", "upbit", "bithumb", "coinbase"];
 const SCREEN_NAV_ITEMS = ["market", "news", "board", "resources"];
+const SCREEN_RESOURCE_ITEMS = ["futures", "ranking", "audit"];
+const SCREEN_RESOURCE_LABEL_DEFAULTS = {
+  futures: "선물",
+  ranking: "랭킹",
+  audit: "실사 보유량",
+};
 const DEFAULT_SCREEN_SETTINGS = {
   navOrder: ["market", "news", "board", "resources"],
+  resourceOrder: ["futures", "ranking", "audit"],
+  resourceLabels: { ...SCREEN_RESOURCE_LABEL_DEFAULTS },
   boardOrder: ["binance", "upbit", "bithumb", "coinbase"],
   statusPosition: "summary",
   visibleStats: {
@@ -655,6 +663,22 @@ function normalizeScreenSettings(raw) {
     if (!navOrder.includes(item)) navOrder.push(item);
   });
 
+  const rawResourceOrder = Array.isArray(source.resourceOrder)
+    ? source.resourceOrder
+    : DEFAULT_SCREEN_SETTINGS.resourceOrder;
+  const resourceOrder = rawResourceOrder.filter(
+    (item, index, values) => SCREEN_RESOURCE_ITEMS.includes(item) && values.indexOf(item) === index
+  );
+  SCREEN_RESOURCE_ITEMS.forEach((item) => {
+    if (!resourceOrder.includes(item)) resourceOrder.push(item);
+  });
+
+  const resourceLabels = {};
+  SCREEN_RESOURCE_ITEMS.forEach((item) => {
+    resourceLabels[item] = cleanBoardText(source.resourceLabels?.[item], 20)
+      || SCREEN_RESOURCE_LABEL_DEFAULTS[item];
+  });
+
   const rawOrder = Array.isArray(source.boardOrder) ? source.boardOrder : DEFAULT_SCREEN_SETTINGS.boardOrder;
   const boardOrder = rawOrder.filter((board) => SCREEN_MARKET_BOARDS.includes(board));
   SCREEN_MARKET_BOARDS.forEach((board) => {
@@ -678,7 +702,7 @@ function normalizeScreenSettings(raw) {
     ? source.statusPosition
     : DEFAULT_SCREEN_SETTINGS.statusPosition;
 
-  return { navOrder, boardOrder, statusPosition, visibleStats, visibleStatus };
+  return { navOrder, resourceOrder, resourceLabels, boardOrder, statusPosition, visibleStats, visibleStatus };
 }
 
 function getSafeMediaKind(value) {

@@ -3873,6 +3873,7 @@
 
     .screen-settings-checks,
     .screen-settings-menu-order,
+    .screen-settings-resource-order,
     .screen-settings-position-buttons {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3881,6 +3882,72 @@
 
     .screen-settings-menu-order {
       grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .screen-settings-resource-order {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .screen-settings-resource-item {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 9px;
+      min-height: 58px;
+      padding: 9px 10px;
+      border: 1px solid rgba(117, 221, 255, 0.28);
+      border-radius: 12px;
+      background: rgba(117, 221, 255, 0.08);
+      cursor: grab;
+      user-select: none;
+    }
+
+    .screen-settings-resource-item:active {
+      cursor: grabbing;
+    }
+
+    .screen-settings-resource-item.is-dragging {
+      opacity: 0.48;
+    }
+
+    .screen-settings-resource-item.is-drop-before {
+      box-shadow: -4px 0 0 #71e6ff;
+    }
+
+    .screen-settings-resource-item.is-drop-after {
+      box-shadow: 4px 0 0 #71e6ff;
+    }
+
+    .screen-settings-resource-handle {
+      color: #85aaba;
+      font-size: 16px;
+      letter-spacing: 1px;
+    }
+
+    .screen-settings-resource-label {
+      min-width: 0;
+    }
+
+    .screen-settings-resource-label span {
+      display: block;
+      margin-bottom: 4px;
+      color: #85aaba;
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .screen-settings-resource-label input {
+      width: 100%;
+      min-width: 0;
+      height: 34px;
+      padding: 0 9px;
+      border: 1px solid rgba(151, 183, 198, 0.2);
+      border-radius: 7px;
+      background: rgba(3, 14, 21, 0.55);
+      color: #effbff;
+      font-size: 13px;
+      font-weight: 750;
+      user-select: text;
     }
 
     .screen-settings-toggle,
@@ -3983,6 +4050,7 @@
       .screen-settings-preview,
       .screen-settings-checks,
       .screen-settings-menu-order,
+      .screen-settings-resource-order,
       .screen-settings-position-buttons {
         grid-template-columns: 1fr;
       }
@@ -5243,6 +5311,22 @@
         color: #005b7a;
       }
 
+      .screen-settings-resource-item {
+        border-color: #c7d6de;
+        background: #f7f9fa;
+      }
+
+      .screen-settings-resource-handle,
+      .screen-settings-resource-label span {
+        color: var(--muted);
+      }
+
+      .screen-settings-resource-label input {
+        border-color: #c7d6de;
+        background: #ffffff;
+        color: var(--text);
+      }
+
       /* BLOCKSCOPE dashboard layout */
       :root {
         --bg: #ffffff;
@@ -5450,8 +5534,13 @@
       }
 
       .intel-header .view-link:hover,
+      .intel-header .view-link:focus-visible,
       .intel-header .view-link.active {
         color: #101f38;
+      }
+
+      .intel-header .view-link:focus-visible {
+        outline: none;
       }
 
       .intel-header .view-link.active::after {
@@ -5691,6 +5780,149 @@
         padding-top: 48px;
       }
 
+      .shell.board-mode .news-host {
+        width: min(1240px, calc(100% - 40px));
+      }
+
+      .shell.board-mode .news-panel {
+        padding: 0;
+      }
+
+      .shell.board-mode .free-board-shell {
+        gap: 0;
+      }
+
+      .shell.board-mode .free-board-card,
+      .shell.board-mode .free-board-board-nav {
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+
+      .shell.board-mode .free-board-board-nav {
+        padding: 0;
+        border-bottom: 1px solid #dde4ed;
+      }
+
+      .shell.board-mode .free-board-tabs {
+        gap: 24px;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+
+      .shell.board-mode .free-board-tabs::-webkit-scrollbar {
+        display: none;
+      }
+
+      .shell.board-mode .free-board-tab,
+      .shell.board-mode .free-board-list-page .free-board-tab {
+        position: relative;
+        min-width: auto;
+        min-height: 52px;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: #64738a;
+        font-size: 14px;
+        font-weight: 720;
+        white-space: nowrap;
+      }
+
+      .shell.board-mode .free-board-tab::after {
+        position: absolute;
+        right: 0;
+        bottom: -1px;
+        left: 0;
+        height: 2px;
+        background: #3567ff;
+        content: "";
+        opacity: 0;
+        transform: scaleX(0.5);
+        transition: opacity 160ms ease, transform 160ms ease;
+      }
+
+      .shell.board-mode .free-board-tab:hover,
+      .shell.board-mode .free-board-list-page .free-board-tab:hover,
+      .shell.board-mode .free-board-tab.active,
+      .shell.board-mode .free-board-list-page .free-board-tab.active {
+        border: 0;
+        background: transparent;
+        color: #173fbb;
+      }
+
+      .shell.board-mode .free-board-tab.active::after {
+        opacity: 1;
+        transform: scaleX(1);
+      }
+
+      .shell.board-mode .free-board-list {
+        padding: 0;
+      }
+
+      .shell.board-mode .free-board-table-wrap {
+        min-height: 240px;
+        border-bottom: 1px solid #dde4ed;
+      }
+
+      .shell.board-mode .free-board-table th,
+      .shell.board-mode .free-board-table td {
+        padding: 13px 10px;
+        border-bottom: 1px solid #edf1f5;
+        color: #25354c;
+      }
+
+      .shell.board-mode .free-board-table th {
+        color: #68768b;
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .shell.board-mode .free-board-table td:nth-child(2) {
+        color: #53647b;
+      }
+
+      .shell.board-mode .free-board-title-cell .free-board-title-btn {
+        color: #14233b;
+      }
+
+      .shell.board-mode .free-board-title-cell .free-board-title-btn:hover {
+        color: #2858db;
+      }
+
+      .shell.board-mode .free-board-bottom {
+        padding-top: 16px;
+      }
+
+      .shell.board-mode .free-board-write-btn,
+      .shell.board-mode .free-board-submit {
+        border-color: #3567ff;
+        background: #3567ff;
+        color: #ffffff;
+      }
+
+      .shell.board-mode .free-board-list-btn,
+      .shell.board-mode .free-board-admin-mini {
+        border-color: #cbd5e1;
+        background: #ffffff;
+        color: #394b63;
+      }
+
+      .shell.board-mode .free-board-search {
+        margin-top: 18px;
+        padding-top: 18px;
+        border-top: 1px solid #edf1f5;
+      }
+
+      .shell.board-mode .free-board-search select,
+      .shell.board-mode .free-board-search input {
+        border-color: #d7e0e9;
+        background: #ffffff;
+        color: #17243a;
+      }
+
       .lock-ttl-wrap {
         top: 124px;
       }
@@ -5839,6 +6071,20 @@
         .shell.futures-mode .news-host,
         .shell.audit-mode .news-host {
           padding-top: 28px;
+        }
+
+        .shell.board-mode .news-host {
+          width: calc(100% - 24px);
+        }
+
+        .shell.board-mode .free-board-tabs {
+          gap: 20px;
+        }
+
+        .shell.board-mode .free-board-tab,
+        .shell.board-mode .free-board-list-page .free-board-tab {
+          min-height: 46px;
+          font-size: 13px;
         }
 
         .lock-ttl-wrap {
@@ -6170,6 +6416,10 @@
                 <div class="screen-settings-menu-order" id="screenSettingsMenuOrder"></div>
               </section>
               <section class="screen-settings-section">
+                <h3><span>자료 하위 메뉴</span><small>이름 입력 · 마우스로 끌어서 순서 변경</small></h3>
+                <div class="screen-settings-resource-order" id="screenSettingsResourceOrder"></div>
+              </section>
+              <section class="screen-settings-section">
                 <h3><span>통계 카드 표시</span><small>드래그로 순서 변경 · 누르면 표시/숨김</small></h3>
                 <div class="screen-settings-checks" id="screenSettingsStatChecks"></div>
               </section>
@@ -6266,6 +6516,12 @@
     const MARKET_SOURCE_VISIBLE_KEY = "fdv_market_source_visible_v1";
     const MARKET_BOARDS = ["binance", "upbit", "bithumb", "coinbase"];
     const SCREEN_NAV_ITEMS = ["market", "news", "board", "resources"];
+    const RESOURCE_MENU_ITEMS = ["futures", "ranking", "audit"];
+    const RESOURCE_MENU_LABEL_DEFAULTS = {
+      futures: "선물",
+      ranking: "랭킹",
+      audit: "실사 보유량",
+    };
     const UPBIT_AUDIT_DATA_URL = "./upbit-audit-202607.json";
     const UPBIT_AUDIT_PAGE_SIZE = 50;
     const MARKET_CHARTS = {
@@ -6293,6 +6549,8 @@
     };
     const SCREEN_SETTINGS_DEFAULT = {
       navOrder: ["market", "news", "board", "resources"],
+      resourceOrder: ["futures", "ranking", "audit"],
+      resourceLabels: { ...RESOURCE_MENU_LABEL_DEFAULTS },
       boardOrder: ["binance", "upbit", "bithumb", "coinbase"],
       statusPosition: "summary",
       visibleStats: {
@@ -6567,6 +6825,7 @@
       const screenSettingsSaveBtn = document.getElementById("screenSettingsSaveBtn");
       const screenSettingsResetBtn = document.getElementById("screenSettingsResetBtn");
       const screenSettingsMenuOrder = document.getElementById("screenSettingsMenuOrder");
+      const screenSettingsResourceOrder = document.getElementById("screenSettingsResourceOrder");
       const screenSettingsStatChecks = document.getElementById("screenSettingsStatChecks");
       const screenSettingsStatusChecks = document.getElementById("screenSettingsStatusChecks");
       const screenSettingsStatusPosition = document.getElementById("screenSettingsStatusPosition");
@@ -11949,6 +12208,22 @@
           if (!navOrder.includes(item)) navOrder.push(item);
         });
 
+        const rawResourceOrder = Array.isArray(source.resourceOrder)
+          ? source.resourceOrder
+          : SCREEN_SETTINGS_DEFAULT.resourceOrder;
+        const resourceOrder = rawResourceOrder.filter(
+          (item, index, values) => RESOURCE_MENU_ITEMS.includes(item) && values.indexOf(item) === index
+        );
+        RESOURCE_MENU_ITEMS.forEach((item) => {
+          if (!resourceOrder.includes(item)) resourceOrder.push(item);
+        });
+
+        const resourceLabels = {};
+        RESOURCE_MENU_ITEMS.forEach((item) => {
+          const label = String(source.resourceLabels?.[item] || "").replace(/[\0\r\n]/g, " ").trim().slice(0, 20);
+          resourceLabels[item] = label || RESOURCE_MENU_LABEL_DEFAULTS[item];
+        });
+
         const rawOrder = Array.isArray(source.boardOrder) ? source.boardOrder : SCREEN_SETTINGS_DEFAULT.boardOrder;
         const boardOrder = rawOrder.filter((board) => MARKET_BOARDS.includes(board));
         MARKET_BOARDS.forEach((board) => {
@@ -11972,7 +12247,7 @@
           ? source.statusPosition
           : SCREEN_SETTINGS_DEFAULT.statusPosition;
 
-        return { navOrder, boardOrder, statusPosition, visibleStats, visibleStatus };
+        return { navOrder, resourceOrder, resourceLabels, boardOrder, statusPosition, visibleStats, visibleStatus };
       }
 
       function loadScreenSettings() {
@@ -12027,6 +12302,14 @@
 
       function orderedScreenNavItems(settings = screenSettings) {
         return normalizeScreenSettings(settings).navOrder;
+      }
+
+      function orderedResourceMenuItems(settings = screenSettings) {
+        return normalizeScreenSettings(settings).resourceOrder;
+      }
+
+      function getResourceMenuLabel(item, settings = screenSettings) {
+        return normalizeScreenSettings(settings).resourceLabels[item] || RESOURCE_MENU_LABEL_DEFAULTS[item] || item;
       }
 
       function getScreenNavLabel(item) {
@@ -12089,6 +12372,19 @@
           if (button) viewSwitch.appendChild(button);
         });
 
+        const resourceButtons = {
+          futures: futuresToggleBtn,
+          ranking: rankingToggleBtn,
+          audit: auditToggleBtn,
+        };
+        orderedResourceMenuItems().forEach((item) => {
+          const button = resourceButtons[item];
+          if (!button) return;
+          button.textContent = getResourceMenuLabel(item);
+          button.dataset.screenResourceItem = item;
+          button.parentElement?.appendChild(button);
+        });
+
         order.forEach((board) => {
           const card = statCards[board];
           if (card && summaryStats) summaryStats.appendChild(card);
@@ -12130,6 +12426,7 @@
 
       let screenSettingsDraft = null;
       let screenSettingsDraggingNav = "";
+      let screenSettingsDraggingResource = "";
       let screenSettingsDraggingBoard = "";
       let screenSettingsDragClickSuppressed = false;
       let screenSettingsServerRequest = null;
@@ -12290,7 +12587,7 @@
       }
 
       function renderScreenSettingsEditor() {
-        if (!screenSettingsMenuOrder || !screenSettingsStatChecks || !screenSettingsStatusChecks || !screenSettingsStatusPosition) return;
+        if (!screenSettingsMenuOrder || !screenSettingsResourceOrder || !screenSettingsStatChecks || !screenSettingsStatusChecks || !screenSettingsStatusPosition) return;
         try {
           const previousMenuRects = captureOrderedItemRects(
             screenSettingsMenuOrder,
@@ -12302,9 +12599,15 @@
             "[data-screen-stat]",
             "screenStat"
           );
+          const previousResourceRects = captureOrderedItemRects(
+            screenSettingsResourceOrder,
+            "[data-screen-resource]",
+            "screenResource"
+          );
           const draft = normalizeScreenSettings(screenSettingsDraft || screenSettings);
           screenSettingsDraft = draft;
           const navOrder = orderedScreenNavItems(draft);
+          const resourceOrder = orderedResourceMenuItems(draft);
           const order = orderedMarketBoards(draft);
           const visibleStatsCount = order.filter((board) => draft.visibleStats[board] !== false).length;
           const visibleStatusCount = Object.values(draft.visibleStatus).filter(Boolean).length;
@@ -12318,6 +12621,10 @@
               <div class="screen-settings-preview-item">
                 <span class="screen-settings-preview-label">통계 카드 순서</span>
                 ${escapeHtml(order.map(boardLabel).join(" → "))}
+              </div>
+              <div class="screen-settings-preview-item">
+                <span class="screen-settings-preview-label">자료 하위 메뉴</span>
+                ${escapeHtml(resourceOrder.map((item) => getResourceMenuLabel(item, draft)).join(" → "))}
               </div>
               <div class="screen-settings-preview-item">
                 <span class="screen-settings-preview-label">상태 표시</span>
@@ -12339,6 +12646,25 @@
             "[data-screen-nav]",
             "screenNav",
             previousMenuRects
+          );
+
+          screenSettingsResourceOrder.innerHTML = resourceOrder
+            .map((item) => `
+              <div class="screen-settings-resource-item${screenSettingsDraggingResource === item ? " is-dragging" : ""}" data-screen-resource="${escapeAttr(item)}" draggable="true" title="마우스로 끌어서 자료 메뉴 순서 변경">
+                <span class="screen-settings-resource-handle" aria-hidden="true">⋮⋮</span>
+                <label class="screen-settings-resource-label">
+                  <span>${escapeHtml(RESOURCE_MENU_LABEL_DEFAULTS[item])} 이름</span>
+                  <input type="text" maxlength="20" value="${escapeAttr(getResourceMenuLabel(item, draft))}" data-screen-resource-label="${escapeAttr(item)}" aria-label="${escapeAttr(RESOURCE_MENU_LABEL_DEFAULTS[item])} 메뉴 이름" />
+                </label>
+                <span class="screen-settings-toggle-state">이동</span>
+              </div>
+            `)
+            .join("");
+          animateOrderedItemMovement(
+            screenSettingsResourceOrder,
+            "[data-screen-resource]",
+            "screenResource",
+            previousResourceRects
           );
 
           screenSettingsStatChecks.innerHTML = order
@@ -12437,8 +12763,23 @@
         return nextOrder;
       }
 
+      function buildScreenSettingsResourceOrder(dragItem, targetItem, position = "after") {
+        const draft = normalizeScreenSettings(screenSettingsDraft || screenSettings);
+        const order = [...draft.resourceOrder];
+        const fromIndex = order.indexOf(dragItem);
+        const targetIndex = order.indexOf(targetItem);
+        if (fromIndex < 0 || targetIndex < 0 || fromIndex === targetIndex) return null;
+        const movedItem = order[fromIndex];
+        const nextOrder = order.filter((item) => item !== dragItem);
+        const nextTargetIndex = nextOrder.indexOf(targetItem);
+        if (nextTargetIndex < 0) return null;
+        const insertIndex = position === "before" ? nextTargetIndex : nextTargetIndex + 1;
+        nextOrder.splice(insertIndex, 0, movedItem);
+        return nextOrder;
+      }
+
       function clearScreenSettingsDropMarkers() {
-        [screenSettingsMenuOrder, screenSettingsStatChecks].filter(Boolean).forEach((root) => {
+        [screenSettingsMenuOrder, screenSettingsResourceOrder, screenSettingsStatChecks].filter(Boolean).forEach((root) => {
           root.querySelectorAll(".is-drop-before, .is-drop-after, .is-dragging").forEach((item) => {
             item.classList.remove("is-drop-before", "is-drop-after", "is-dragging");
             delete item.dataset.dropPosition;
@@ -12463,6 +12804,15 @@
         screenSettingsDraft = draft;
         selectDefaultMarketBoard(draft);
         commitScreenSettingsDraft("거래소 순서를 저장했습니다.");
+      }
+
+      function saveScreenSettingsDraggedResourceOrder(dragItem, targetItem, position = "after") {
+        const nextOrder = buildScreenSettingsResourceOrder(dragItem, targetItem, position);
+        if (!nextOrder) return;
+        const draft = normalizeScreenSettings(screenSettingsDraft || screenSettings);
+        draft.resourceOrder = nextOrder;
+        screenSettingsDraft = draft;
+        commitScreenSettingsDraft("자료 하위 메뉴 순서를 저장했습니다.");
       }
 
       function renderAutoStatus() {
@@ -15152,6 +15502,76 @@
 
         screenSettingsMenuOrder.addEventListener("dragend", () => {
           screenSettingsDraggingNav = "";
+          clearScreenSettingsDropMarkers();
+        });
+      }
+
+      if (screenSettingsResourceOrder) {
+        screenSettingsResourceOrder.addEventListener("input", (event) => {
+          const input = event.target.closest("[data-screen-resource-label]");
+          if (!input) return;
+          const item = input.dataset.screenResourceLabel;
+          if (!RESOURCE_MENU_ITEMS.includes(item)) return;
+          const draft = normalizeScreenSettings(screenSettingsDraft || screenSettings);
+          draft.resourceLabels[item] = String(input.value || "").replace(/[\0\r\n]/g, " ").slice(0, 20);
+          screenSettingsDraft = draft;
+          setScreenSettingsMessage("이름을 바꿨습니다. 저장 버튼을 누르면 모든 브라우저에 적용됩니다.");
+        });
+
+        screenSettingsResourceOrder.addEventListener("dragstart", (event) => {
+          if (event.target.closest("input")) {
+            event.preventDefault();
+            return;
+          }
+          const dragTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
+          const itemElement = dragTarget?.closest("[data-screen-resource]");
+          if (!itemElement || !event.dataTransfer) return;
+          const item = itemElement.dataset.screenResource;
+          if (!RESOURCE_MENU_ITEMS.includes(item)) return;
+          screenSettingsDraggingResource = item;
+          itemElement.classList.add("is-dragging");
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", item);
+        });
+
+        screenSettingsResourceOrder.addEventListener("dragover", (event) => {
+          if (!screenSettingsDraggingResource) return;
+          const dragTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
+          const itemElement = dragTarget?.closest("[data-screen-resource]");
+          if (!itemElement || !event.dataTransfer) return;
+          const targetItem = itemElement.dataset.screenResource;
+          if (!RESOURCE_MENU_ITEMS.includes(targetItem) || targetItem === screenSettingsDraggingResource) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          const rect = itemElement.getBoundingClientRect();
+          const position = event.clientX < rect.left + rect.width / 2 ? "before" : "after";
+          screenSettingsResourceOrder.querySelectorAll(".is-drop-before, .is-drop-after").forEach((item) => {
+            if (item !== itemElement) {
+              item.classList.remove("is-drop-before", "is-drop-after");
+              delete item.dataset.dropPosition;
+            }
+          });
+          itemElement.classList.toggle("is-drop-before", position === "before");
+          itemElement.classList.toggle("is-drop-after", position === "after");
+          itemElement.dataset.dropPosition = position;
+        });
+
+        screenSettingsResourceOrder.addEventListener("drop", (event) => {
+          if (!screenSettingsDraggingResource) return;
+          const dropTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
+          const itemElement = dropTarget?.closest("[data-screen-resource]");
+          if (!itemElement) return;
+          event.preventDefault();
+          const targetItem = itemElement.dataset.screenResource;
+          const position = itemElement.dataset.dropPosition || "after";
+          const dragItem = screenSettingsDraggingResource;
+          screenSettingsDraggingResource = "";
+          clearScreenSettingsDropMarkers();
+          saveScreenSettingsDraggedResourceOrder(dragItem, targetItem, position);
+        });
+
+        screenSettingsResourceOrder.addEventListener("dragend", () => {
+          screenSettingsDraggingResource = "";
           clearScreenSettingsDropMarkers();
         });
       }
