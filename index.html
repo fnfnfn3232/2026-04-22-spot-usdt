@@ -145,6 +145,31 @@
       font-variant-numeric: tabular-nums;
     }
 
+    .lock-member-form,
+    .lock-reset-passwords {
+      display: grid;
+      gap: 8px;
+    }
+
+    .lock-member-form input,
+    .lock-reset-passwords input {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .lock-member-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .lock-member-link {
+      border: 0;
+      padding: 2px 0;
+      background: transparent;
+      color: var(--accent);
+      font-size: 12px;
+    }
+
     .lock-email-status {
       min-height: 18px;
       color: var(--muted);
@@ -6394,7 +6419,7 @@
   <div class="site-lock hidden" id="siteLock">
     <section class="lock-card">
       <h2 class="lock-title">로그인</h2>
-      <p class="lock-desc">비밀번호 또는 이메일 인증으로 로그인할 수 있습니다.</p>
+      <p class="lock-desc">관리자는 서버 비밀번호, 회원은 이메일과 비밀번호로 로그인할 수 있습니다.</p>
       <form class="lock-form" id="lockForm">
         <div class="lock-input-wrap">
           <input id="lockPasswordInput" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="done" placeholder="비밀번호" />
@@ -6402,7 +6427,34 @@
         </div>
         <button type="submit" id="lockSubmitBtn">확인</button>
       </form>
+      <div class="lock-email" id="lockMemberPanel">
+        <p class="lock-signup-note">회원 로그인</p>
+        <form class="lock-member-form" id="lockMemberLoginForm">
+          <input id="lockMemberEmailInput" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="회원 이메일" />
+          <input id="lockMemberPasswordInput" type="password" autocomplete="current-password" placeholder="회원 비밀번호" />
+          <button id="lockMemberLoginBtn" type="submit">회원 로그인</button>
+        </form>
+        <div class="lock-member-actions">
+          <button class="lock-member-link" id="lockPasswordResetToggleBtn" type="button">비밀번호 찾기</button>
+        </div>
+        <div class="lock-email hidden" id="lockPasswordResetPanel">
+          <p class="lock-signup-note">가입한 회원 이메일로 재설정 코드를 보냅니다.</p>
+          <div class="lock-email-request-row">
+            <input class="lock-email-address" id="lockPasswordResetEmailInput" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="회원 이메일" />
+            <button id="lockPasswordResetRequestBtn" type="button">코드 받기</button>
+          </div>
+          <form class="lock-reset-passwords" id="lockPasswordResetForm" hidden>
+            <input id="lockPasswordResetCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="6자리 재설정 코드" />
+            <input id="lockPasswordResetNewInput" type="password" autocomplete="new-password" placeholder="새 비밀번호 (영문·숫자 포함 10자 이상)" />
+            <input id="lockPasswordResetConfirmInput" type="password" autocomplete="new-password" placeholder="새 비밀번호 확인" />
+            <button id="lockPasswordResetConfirmBtn" type="submit">비밀번호 변경</button>
+          </form>
+          <div class="lock-email-status" id="lockPasswordResetStatus" aria-live="polite"></div>
+        </div>
+        <div class="lock-email-status" id="lockMemberStatus" aria-live="polite"></div>
+      </div>
       <div class="lock-email hidden" id="lockEmailPanel">
+        <p class="lock-signup-note">관리자 이메일 코드 로그인</p>
         <div class="lock-email-request-row">
           <input class="lock-email-address" id="lockEmailAddressInput" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="코드를 받을 이메일" />
           <button class="lock-email-request" id="lockEmailRequestBtn" type="button">코드 받기</button>
@@ -6419,6 +6471,10 @@
         <div class="lock-email-request-row">
           <input class="lock-email-address" id="lockSignupEmailInput" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="가입할 이메일" />
           <button id="lockSignupRequestBtn" type="button">인증번호 받기</button>
+        </div>
+        <div class="lock-reset-passwords">
+          <input id="lockSignupPasswordInput" type="password" autocomplete="new-password" placeholder="사용할 비밀번호 (영문·숫자 포함 10자 이상)" />
+          <input id="lockSignupPasswordConfirmInput" type="password" autocomplete="new-password" placeholder="비밀번호 확인" />
         </div>
         <form class="lock-email-verify" id="lockSignupVerifyForm" hidden>
           <input id="lockSignupCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="6자리 인증번호" />
@@ -6972,12 +7028,29 @@
       const lockEmailCodeInput = document.getElementById("lockEmailCodeInput");
       const lockEmailVerifyBtn = document.getElementById("lockEmailVerifyBtn");
       const lockEmailStatus = document.getElementById("lockEmailStatus");
+      const lockMemberLoginForm = document.getElementById("lockMemberLoginForm");
+      const lockMemberEmailInput = document.getElementById("lockMemberEmailInput");
+      const lockMemberPasswordInput = document.getElementById("lockMemberPasswordInput");
+      const lockMemberLoginBtn = document.getElementById("lockMemberLoginBtn");
+      const lockMemberStatus = document.getElementById("lockMemberStatus");
+      const lockPasswordResetToggleBtn = document.getElementById("lockPasswordResetToggleBtn");
+      const lockPasswordResetPanel = document.getElementById("lockPasswordResetPanel");
+      const lockPasswordResetEmailInput = document.getElementById("lockPasswordResetEmailInput");
+      const lockPasswordResetRequestBtn = document.getElementById("lockPasswordResetRequestBtn");
+      const lockPasswordResetForm = document.getElementById("lockPasswordResetForm");
+      const lockPasswordResetCodeInput = document.getElementById("lockPasswordResetCodeInput");
+      const lockPasswordResetNewInput = document.getElementById("lockPasswordResetNewInput");
+      const lockPasswordResetConfirmInput = document.getElementById("lockPasswordResetConfirmInput");
+      const lockPasswordResetConfirmBtn = document.getElementById("lockPasswordResetConfirmBtn");
+      const lockPasswordResetStatus = document.getElementById("lockPasswordResetStatus");
       const lockSignupToggleBtn = document.getElementById("lockSignupToggleBtn");
       const lockSignupPanel = document.getElementById("lockSignupPanel");
       const lockSignupEmailInput = document.getElementById("lockSignupEmailInput");
       const lockSignupRequestBtn = document.getElementById("lockSignupRequestBtn");
       const lockSignupVerifyForm = document.getElementById("lockSignupVerifyForm");
       const lockSignupCodeInput = document.getElementById("lockSignupCodeInput");
+      const lockSignupPasswordInput = document.getElementById("lockSignupPasswordInput");
+      const lockSignupPasswordConfirmInput = document.getElementById("lockSignupPasswordConfirmInput");
       const lockSignupVerifyBtn = document.getElementById("lockSignupVerifyBtn");
       const lockSignupStatus = document.getElementById("lockSignupStatus");
       const adminLaunchBtn = document.getElementById("adminLaunchBtn");
@@ -7477,6 +7550,26 @@
       let signupOtpExpiresAt = 0;
       let signupOtpMaskedEmail = "";
       let signupOtpTimerId = 0;
+      let passwordResetRequestId = "";
+      let passwordResetExpiresAt = 0;
+
+      function getMemberPasswordValidationMessage(password) {
+        const value = String(password || "");
+        const length = Array.from(value).length;
+        if (length < 10 || length > 72) return "비밀번호는 10자 이상 72자 이하로 입력해 주세요.";
+        if (!/[A-Za-z]/.test(value) || !/\d/.test(value)) return "비밀번호에는 영문과 숫자를 모두 포함해 주세요.";
+        return "";
+      }
+
+      function setMemberLoginStatus(message, isError = false) {
+        lockMemberStatus.textContent = String(message || "");
+        lockMemberStatus.classList.toggle("is-error", Boolean(isError));
+      }
+
+      function setPasswordResetStatus(message, isError = false) {
+        lockPasswordResetStatus.textContent = String(message || "");
+        lockPasswordResetStatus.classList.toggle("is-error", Boolean(isError));
+      }
 
       function setEmailLoginStatus(message, isError = false) {
         lockEmailStatus.textContent = String(message || "");
@@ -7608,6 +7701,8 @@
         lockSignupEmailInput.disabled = false;
         lockSignupCodeInput.value = "";
         lockSignupCodeInput.disabled = false;
+        lockSignupPasswordInput.value = "";
+        lockSignupPasswordConfirmInput.value = "";
         lockSignupVerifyBtn.disabled = false;
         lockSignupVerifyForm.hidden = true;
         lockSignupRequestBtn.disabled = false;
@@ -7670,12 +7765,41 @@
         return getEmailLoginErrorMessage(error);
       }
 
+      function getMemberPasswordErrorMessage(error) {
+        const message = String(error?.message || "");
+        const remaining = Math.max(0, Math.floor(Number(error?.payload?.remainingAttempts) || 0));
+        const retryAfter = Math.max(1, Math.ceil(Number(error?.payload?.retryAfterSeconds) || 0));
+        if (message === "invalid_member_password_length") return "비밀번호는 10자 이상 72자 이하로 입력해 주세요.";
+        if (message === "weak_member_password") return "비밀번호에는 영문과 숫자를 모두 포함해 주세요.";
+        if (message === "invalid_member_credentials") return remaining
+          ? `이메일 또는 비밀번호가 맞지 않거나 아직 승인되지 않았습니다. ${remaining}회 남았습니다.`
+          : "이메일 또는 비밀번호가 맞지 않거나 아직 승인되지 않았습니다.";
+        if (message === "too_many_login_attempts") return `로그인 시도가 잠겼습니다. ${retryAfter}초 후 다시 시도해 주세요.`;
+        if (message === "password_reset_expired") return "재설정 코드가 만료되었습니다. 새 코드를 받아 주세요.";
+        if (message === "invalid_password_reset") return remaining
+          ? `재설정 코드가 맞지 않습니다. ${remaining}회 남았습니다.`
+          : "재설정 코드가 맞지 않거나 만료되었습니다.";
+        return getEmailLoginErrorMessage(error);
+      }
+
       function completeSiteLogin() {
         siteAuthConfirmed = true;
         setLockExtendCount(0);
         hideSiteLock();
         renderLockTtl();
         lockPasswordInput.value = "";
+        lockMemberEmailInput.value = "";
+        lockMemberPasswordInput.value = "";
+        setMemberLoginStatus("");
+        passwordResetRequestId = "";
+        passwordResetExpiresAt = 0;
+        lockPasswordResetPanel.classList.add("hidden");
+        lockPasswordResetForm.hidden = true;
+        lockPasswordResetEmailInput.value = "";
+        lockPasswordResetCodeInput.value = "";
+        lockPasswordResetNewInput.value = "";
+        lockPasswordResetConfirmInput.value = "";
+        setPasswordResetStatus("");
         resetEmailLoginForm();
         resetSignupForm();
         scheduleMarketChart();
@@ -11089,11 +11213,12 @@
         adminMembersList.innerHTML = adminMembers.map((member) => {
           const requestedAt = formatLocalDateTimeMs(member.requestedAt);
           const lastLogin = Number(member.lastLoginAt) > 0 ? ` · 최근 로그인 ${formatLocalDateTimeMs(member.lastLoginAt)}` : "";
+          const passwordState = member.passwordConfigured ? " · 비밀번호 설정됨" : " · 비밀번호 미설정";
           return `
             <div class="admin-member-row">
               <div>
                 <div class="admin-member-email">${escapeHtml(member.email)}</div>
-                <div class="admin-member-meta">신청 ${escapeHtml(requestedAt)}${escapeHtml(lastLogin)}</div>
+                <div class="admin-member-meta">신청 ${escapeHtml(requestedAt)}${escapeHtml(passwordState)}${escapeHtml(lastLogin)}</div>
               </div>
               <div class="admin-member-status">${escapeHtml(getMemberStatusLabel(member.status))}</div>
               <div class="admin-member-actions">${getMemberActionButtons(member)}</div>
@@ -11699,6 +11824,129 @@
       lockPasswordInput.addEventListener("keyup", updateLockCapsWarning);
       lockPasswordInput.addEventListener("blur", () => setLockCapsWarning(false));
 
+      lockMemberLoginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const email = String(lockMemberEmailInput.value || "").trim().toLowerCase();
+        const password = String(lockMemberPasswordInput.value || "");
+        lockMemberEmailInput.value = email;
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !password) {
+          setMemberLoginStatus("회원 이메일과 비밀번호를 입력해 주세요.", true);
+          return;
+        }
+        lockMemberLoginBtn.disabled = true;
+        setMemberLoginStatus("로그인 확인 중입니다...");
+        try {
+          await fetchServerAuth("/api/login/member/password", {
+            method: "POST",
+            timeoutMs: 12000,
+            body: JSON.stringify({ email, password }),
+          });
+          completeSiteLogin();
+        } catch (error) {
+          setMemberLoginStatus(getMemberPasswordErrorMessage(error), true);
+          lockMemberPasswordInput.value = "";
+          lockMemberPasswordInput.focus();
+        } finally {
+          lockMemberLoginBtn.disabled = false;
+        }
+      });
+
+      lockPasswordResetToggleBtn.addEventListener("click", () => {
+        const willOpen = lockPasswordResetPanel.classList.contains("hidden");
+        lockPasswordResetPanel.classList.toggle("hidden", !willOpen);
+        lockPasswordResetToggleBtn.textContent = willOpen ? "비밀번호 찾기 닫기" : "비밀번호 찾기";
+        if (willOpen) {
+          lockPasswordResetEmailInput.value = String(lockMemberEmailInput.value || "").trim().toLowerCase();
+          setPasswordResetStatus("가입한 회원 이메일을 입력해 주세요.");
+          window.setTimeout(() => lockPasswordResetEmailInput.focus(), 0);
+        }
+      });
+
+      lockPasswordResetRequestBtn.addEventListener("click", async () => {
+        const email = String(lockPasswordResetEmailInput.value || "").trim().toLowerCase();
+        lockPasswordResetEmailInput.value = email;
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          setPasswordResetStatus("가입한 회원 이메일을 정확히 입력해 주세요.", true);
+          lockPasswordResetEmailInput.focus();
+          return;
+        }
+        lockPasswordResetRequestBtn.disabled = true;
+        lockPasswordResetRequestBtn.textContent = "전송 중";
+        setPasswordResetStatus("재설정 코드를 보내는 중입니다...");
+        try {
+          const payload = await fetchServerAuth("/api/member/password/reset/request", {
+            method: "POST",
+            timeoutMs: 12000,
+            body: JSON.stringify({ email }),
+          });
+          passwordResetRequestId = String(payload?.requestId || "");
+          passwordResetExpiresAt = Number(payload?.expiresAt) || (Date.now() + 10 * 60 * 1000);
+          lockPasswordResetForm.hidden = false;
+          lockPasswordResetCodeInput.value = "";
+          setPasswordResetStatus("승인된 회원 이메일이면 재설정 코드를 보냈습니다. 10분 안에 입력해 주세요.");
+          window.setTimeout(() => lockPasswordResetCodeInput.focus(), 0);
+        } catch (error) {
+          setPasswordResetStatus(getMemberPasswordErrorMessage(error), true);
+        } finally {
+          lockPasswordResetRequestBtn.disabled = false;
+          lockPasswordResetRequestBtn.textContent = "코드 받기";
+        }
+      });
+
+      lockPasswordResetForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const code = String(lockPasswordResetCodeInput.value || "").replace(/\D/g, "").slice(0, 6);
+        const newPassword = String(lockPasswordResetNewInput.value || "");
+        const confirmPassword = String(lockPasswordResetConfirmInput.value || "");
+        lockPasswordResetCodeInput.value = code;
+        if (!passwordResetRequestId || passwordResetExpiresAt <= Date.now()) {
+          setPasswordResetStatus("재설정 코드가 만료되었습니다. 새 코드를 받아 주세요.", true);
+          return;
+        }
+        if (!/^\d{6}$/.test(code)) {
+          setPasswordResetStatus("6자리 재설정 코드를 입력해 주세요.", true);
+          return;
+        }
+        const passwordMessage = getMemberPasswordValidationMessage(newPassword);
+        if (passwordMessage) {
+          setPasswordResetStatus(passwordMessage, true);
+          lockPasswordResetNewInput.focus();
+          return;
+        }
+        if (newPassword !== confirmPassword) {
+          setPasswordResetStatus("새 비밀번호 확인이 일치하지 않습니다.", true);
+          lockPasswordResetConfirmInput.focus();
+          return;
+        }
+        lockPasswordResetConfirmBtn.disabled = true;
+        setPasswordResetStatus("비밀번호를 변경하는 중입니다...");
+        try {
+          await fetchServerAuth("/api/member/password/reset/confirm", {
+            method: "POST",
+            timeoutMs: 15000,
+            body: JSON.stringify({ requestId: passwordResetRequestId, code, newPassword }),
+          });
+          lockMemberEmailInput.value = String(lockPasswordResetEmailInput.value || "").trim().toLowerCase();
+          lockMemberPasswordInput.value = "";
+          passwordResetRequestId = "";
+          passwordResetExpiresAt = 0;
+          lockPasswordResetPanel.classList.add("hidden");
+          lockPasswordResetToggleBtn.textContent = "비밀번호 찾기";
+          setMemberLoginStatus("비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.");
+          lockMemberPasswordInput.focus();
+        } catch (error) {
+          setPasswordResetStatus(getMemberPasswordErrorMessage(error), true);
+          lockPasswordResetCodeInput.value = "";
+          lockPasswordResetCodeInput.focus();
+        } finally {
+          lockPasswordResetConfirmBtn.disabled = false;
+        }
+      });
+
+      lockPasswordResetCodeInput.addEventListener("input", () => {
+        lockPasswordResetCodeInput.value = String(lockPasswordResetCodeInput.value || "").replace(/\D/g, "").slice(0, 6);
+      });
+
       lockEmailRequestBtn.addEventListener("click", async () => {
         lockError.textContent = "";
         const email = String(lockEmailAddressInput.value || "").trim().toLowerCase();
@@ -11794,10 +12042,23 @@
 
       lockSignupRequestBtn.addEventListener("click", async () => {
         const email = String(lockSignupEmailInput.value || "").trim().toLowerCase();
+        const password = String(lockSignupPasswordInput.value || "");
+        const passwordConfirm = String(lockSignupPasswordConfirmInput.value || "");
         lockSignupEmailInput.value = email;
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
           setSignupStatus("가입할 이메일 주소를 정확히 입력해 주세요.", true);
           lockSignupEmailInput.focus();
+          return;
+        }
+        const passwordMessage = getMemberPasswordValidationMessage(password);
+        if (passwordMessage) {
+          setSignupStatus(passwordMessage, true);
+          lockSignupPasswordInput.focus();
+          return;
+        }
+        if (password !== passwordConfirm) {
+          setSignupStatus("비밀번호 확인이 일치하지 않습니다.", true);
+          lockSignupPasswordConfirmInput.focus();
           return;
         }
         lockSignupEmailInput.disabled = true;
@@ -11829,6 +12090,8 @@
       lockSignupVerifyForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         const code = String(lockSignupCodeInput.value || "").replace(/\D/g, "").slice(0, 6);
+        const password = String(lockSignupPasswordInput.value || "");
+        const passwordConfirm = String(lockSignupPasswordConfirmInput.value || "");
         lockSignupCodeInput.value = code;
         if (!signupOtpRequestId || signupOtpExpiresAt <= Date.now()) {
           setSignupStatus("인증번호가 만료되었습니다. 새 번호를 받아 주세요.", true);
@@ -11840,6 +12103,11 @@
           lockSignupCodeInput.focus();
           return;
         }
+        const passwordMessage = getMemberPasswordValidationMessage(password);
+        if (passwordMessage || password !== passwordConfirm) {
+          setSignupStatus(passwordMessage || "비밀번호 확인이 일치하지 않습니다.", true);
+          return;
+        }
 
         lockSignupVerifyBtn.disabled = true;
         setSignupStatus("이메일을 확인하는 중입니다...");
@@ -11847,7 +12115,7 @@
           const payload = await fetchServerAuth("/api/signup/email/verify", {
             method: "POST",
             timeoutMs: 10000,
-            body: JSON.stringify({ requestId: signupOtpRequestId, code }),
+            body: JSON.stringify({ requestId: signupOtpRequestId, code, password }),
           });
           stopSignupOtpTimer();
           signupOtpRequestId = "";
@@ -11855,10 +12123,12 @@
           lockSignupVerifyForm.hidden = true;
           lockSignupEmailInput.disabled = true;
           lockSignupRequestBtn.disabled = true;
+          lockSignupPasswordInput.value = "";
+          lockSignupPasswordConfirmInput.value = "";
           if (payload?.status === "owner") {
             setSignupStatus("관리자 이메일입니다. 위 이메일 로그인에서 코드를 받아 로그인해 주세요.");
           } else if (payload?.status === "active") {
-            setSignupStatus("이미 승인된 회원입니다. 위 이메일 로그인에서 코드를 받아 로그인해 주세요.");
+            setSignupStatus("이미 승인된 회원입니다. 회원 로그인에서 이메일과 비밀번호로 로그인해 주세요.");
           } else if (payload?.status === "revoked") {
             setSignupStatus("현재 로그인이 차단된 회원입니다. 관리자에게 문의해 주세요.", true);
           } else {

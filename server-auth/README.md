@@ -15,6 +15,9 @@ The current frontend is wired to use this API when `window.SERVER_AUTH_API_BASE`
 - Protected APIs, such as `/api/news`, return data only when that cookie is valid.
 - Coinness news is stored and returned as preview-only data. Full original text is intentionally not stored.
 - Board attachments can be stored in the private Cloudflare R2 bucket bound as `BOARD_MEDIA_BUCKET`.
+- New members choose their own password, verify ownership of their email address, and wait for approval in the site admin panel.
+- Member passwords are stored only as salted `PBKDF2-SHA256` hashes. Plaintext passwords are never emailed to the administrator or saved in member records.
+- Approved members log in with their email address and chosen password. A forgotten password is reset with a one-time code sent to that member's own email address.
 
 ## Required Cloudflare Worker environment variables
 
@@ -35,6 +38,7 @@ The current frontend is wired to use this API when `window.SERVER_AUTH_API_BASE`
 - `OTP_EMAIL_FROM`
   - Verified sender for member signup mail, for example `코마캡 <login@your-domain.example>`.
   - Resend's `onboarding@resend.dev` test sender can only send to the account owner, so member signup stays hidden until this uses a verified domain.
+  - This is configured once. It does not need to be changed for each new member.
 - `MEMBER_REGISTRATION_ENABLED`
   - Optional. Set to `false` to hide and disable new signup requests without deleting existing members.
 - `NEWS_LIMIT`
@@ -68,6 +72,29 @@ POST /api/login
 Content-Type: application/json
 
 {"password":"..."}
+```
+
+Member password login:
+
+```http
+POST /api/login/member/password
+Content-Type: application/json
+
+{"email":"member@example.com","password":"the member password"}
+```
+
+Member signup verifies the member's email and stores a pending approval request:
+
+```http
+POST /api/signup/email/request
+POST /api/signup/email/verify
+```
+
+Forgotten passwords are reset with a 10-minute code delivered to the approved member's own email:
+
+```http
+POST /api/member/password/reset/request
+POST /api/member/password/reset/confirm
 ```
 
 News:
