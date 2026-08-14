@@ -6467,18 +6467,12 @@
       </div>
       <button class="lock-signup-toggle hidden" id="lockSignupToggleBtn" type="button">회원가입 신청</button>
       <div class="lock-email hidden" id="lockSignupPanel">
-        <p class="lock-signup-note">이메일 확인 후 관리자가 승인해야 로그인할 수 있습니다.</p>
-        <div class="lock-email-request-row">
-          <input class="lock-email-address" id="lockSignupEmailInput" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="가입할 이메일" />
-          <button id="lockSignupRequestBtn" type="button">인증번호 받기</button>
-        </div>
-        <div class="lock-reset-passwords">
+        <p class="lock-signup-note">이메일과 비밀번호로 신청하면 관리자가 확인 후 승인합니다.</p>
+        <form class="lock-reset-passwords" id="lockSignupForm">
+          <input id="lockSignupEmailInput" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="가입할 이메일" />
           <input id="lockSignupPasswordInput" type="password" autocomplete="new-password" placeholder="사용할 비밀번호 (영문·숫자 포함 10자 이상)" />
           <input id="lockSignupPasswordConfirmInput" type="password" autocomplete="new-password" placeholder="비밀번호 확인" />
-        </div>
-        <form class="lock-email-verify" id="lockSignupVerifyForm" hidden>
-          <input id="lockSignupCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="6자리 인증번호" />
-          <button id="lockSignupVerifyBtn" type="submit">가입 신청</button>
+          <button id="lockSignupRequestBtn" type="submit">가입 신청</button>
         </form>
         <div class="lock-email-status" id="lockSignupStatus" aria-live="polite"></div>
       </div>
@@ -7045,13 +7039,11 @@
       const lockPasswordResetStatus = document.getElementById("lockPasswordResetStatus");
       const lockSignupToggleBtn = document.getElementById("lockSignupToggleBtn");
       const lockSignupPanel = document.getElementById("lockSignupPanel");
+      const lockSignupForm = document.getElementById("lockSignupForm");
       const lockSignupEmailInput = document.getElementById("lockSignupEmailInput");
       const lockSignupRequestBtn = document.getElementById("lockSignupRequestBtn");
-      const lockSignupVerifyForm = document.getElementById("lockSignupVerifyForm");
-      const lockSignupCodeInput = document.getElementById("lockSignupCodeInput");
       const lockSignupPasswordInput = document.getElementById("lockSignupPasswordInput");
       const lockSignupPasswordConfirmInput = document.getElementById("lockSignupPasswordConfirmInput");
-      const lockSignupVerifyBtn = document.getElementById("lockSignupVerifyBtn");
       const lockSignupStatus = document.getElementById("lockSignupStatus");
       const adminLaunchBtn = document.getElementById("adminLaunchBtn");
       const adminModal = document.getElementById("adminModal");
@@ -7546,10 +7538,6 @@
       let emailOtpMaskedEmail = "";
       let emailOtpTimerId = 0;
       let signupStatusPromise = null;
-      let signupOtpRequestId = "";
-      let signupOtpExpiresAt = 0;
-      let signupOtpMaskedEmail = "";
-      let signupOtpTimerId = 0;
       let passwordResetRequestId = "";
       let passwordResetExpiresAt = 0;
 
@@ -7659,54 +7647,13 @@
         lockSignupStatus.classList.toggle("is-error", Boolean(isError));
       }
 
-      function stopSignupOtpTimer() {
-        if (signupOtpTimerId) {
-          window.clearInterval(signupOtpTimerId);
-          signupOtpTimerId = 0;
-        }
-      }
-
-      function renderSignupOtpCountdown() {
-        const remainingSeconds = Math.max(0, Math.ceil((signupOtpExpiresAt - Date.now()) / 1000));
-        if (remainingSeconds <= 0) {
-          stopSignupOtpTimer();
-          lockSignupVerifyBtn.disabled = true;
-          lockSignupCodeInput.disabled = true;
-          lockSignupEmailInput.disabled = false;
-          lockSignupRequestBtn.disabled = false;
-          lockSignupRequestBtn.textContent = "인증번호 다시 받기";
-          if (signupOtpRequestId) setSignupStatus("인증번호가 만료되었습니다. 새 번호를 받아 주세요.", true);
-          return;
-        }
-        lockSignupVerifyBtn.disabled = false;
-        lockSignupCodeInput.disabled = false;
-        lockSignupEmailInput.disabled = true;
-        lockSignupRequestBtn.disabled = true;
-        const destination = signupOtpMaskedEmail ? `${signupOtpMaskedEmail}으로 ` : "";
-        setSignupStatus(`${destination}인증번호를 보냈습니다. ${remainingSeconds}초 안에 입력해 주세요.`);
-      }
-
-      function startSignupOtpTimer() {
-        stopSignupOtpTimer();
-        renderSignupOtpCountdown();
-        signupOtpTimerId = window.setInterval(renderSignupOtpCountdown, 250);
-      }
-
       function resetSignupForm({ keepMessage = false } = {}) {
-        stopSignupOtpTimer();
-        signupOtpRequestId = "";
-        signupOtpExpiresAt = 0;
-        signupOtpMaskedEmail = "";
         lockSignupEmailInput.value = "";
         lockSignupEmailInput.disabled = false;
-        lockSignupCodeInput.value = "";
-        lockSignupCodeInput.disabled = false;
         lockSignupPasswordInput.value = "";
         lockSignupPasswordConfirmInput.value = "";
-        lockSignupVerifyBtn.disabled = false;
-        lockSignupVerifyForm.hidden = true;
         lockSignupRequestBtn.disabled = false;
-        lockSignupRequestBtn.textContent = "인증번호 받기";
+        lockSignupRequestBtn.textContent = "가입 신청";
         lockSignupPanel.classList.add("hidden");
         lockSignupToggleBtn.textContent = "회원가입 신청";
         if (!keepMessage) setSignupStatus("");
@@ -7726,6 +7673,8 @@
           .then((payload) => {
             const enabled = Boolean(payload?.enabled);
             lockSignupToggleBtn.classList.toggle("hidden", !enabled);
+            lockPasswordResetToggleBtn.classList.toggle("hidden", !Boolean(payload?.passwordResetEnabled));
+            if (!payload?.passwordResetEnabled) lockPasswordResetPanel.classList.add("hidden");
             if (!enabled) lockSignupPanel.classList.add("hidden");
             return enabled;
           })
@@ -7759,9 +7708,12 @@
 
       function getSignupErrorMessage(error) {
         const message = String(error?.message || "");
-        if (message === "member_account_already_exists") return "이 이메일은 이미 로그인 가능한 주소입니다.";
+        if (message === "invalid_email_destination") return "가입할 이메일 주소를 정확히 입력해 주세요.";
         if (message === "member_registration_not_configured") return "현재 회원가입 신청을 사용할 수 없습니다.";
-        if (message === "member_not_approved") return "아직 관리자 승인이 완료되지 않았습니다.";
+        if (message === "member_signup_rate_limited") {
+          const retryAfter = Math.max(1, Math.ceil(Number(error?.payload?.retryAfterSeconds) || 0));
+          return `가입 신청이 너무 많습니다. ${retryAfter}초 후 다시 시도해 주세요.`;
+        }
         return getEmailLoginErrorMessage(error);
       }
 
@@ -11214,11 +11166,12 @@
           const requestedAt = formatLocalDateTimeMs(member.requestedAt);
           const lastLogin = Number(member.lastLoginAt) > 0 ? ` · 최근 로그인 ${formatLocalDateTimeMs(member.lastLoginAt)}` : "";
           const passwordState = member.passwordConfigured ? " · 비밀번호 설정됨" : " · 비밀번호 미설정";
+          const emailState = Number(member.emailVerifiedAt) > 0 ? " · 이메일 인증됨" : " · 이메일 미인증";
           return `
             <div class="admin-member-row">
               <div>
                 <div class="admin-member-email">${escapeHtml(member.email)}</div>
-                <div class="admin-member-meta">신청 ${escapeHtml(requestedAt)}${escapeHtml(passwordState)}${escapeHtml(lastLogin)}</div>
+                <div class="admin-member-meta">신청 ${escapeHtml(requestedAt)}${escapeHtml(emailState)}${escapeHtml(passwordState)}${escapeHtml(lastLogin)}</div>
               </div>
               <div class="admin-member-status">${escapeHtml(getMemberStatusLabel(member.status))}</div>
               <div class="admin-member-actions">${getMemberActionButtons(member)}</div>
@@ -12033,14 +11986,15 @@
         lockSignupPanel.classList.toggle("hidden", !willOpen);
         lockSignupToggleBtn.textContent = willOpen ? "회원가입 닫기" : "회원가입 신청";
         if (willOpen) {
-          setSignupStatus("가입할 이메일 주소를 입력해 주세요.");
+          setSignupStatus("가입 신청 후 관리자 승인을 기다려 주세요.");
           window.setTimeout(() => lockSignupEmailInput.focus(), 0);
         } else {
           resetSignupForm();
         }
       });
 
-      lockSignupRequestBtn.addEventListener("click", async () => {
+      lockSignupForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
         const email = String(lockSignupEmailInput.value || "").trim().toLowerCase();
         const password = String(lockSignupPasswordInput.value || "");
         const passwordConfirm = String(lockSignupPasswordConfirmInput.value || "");
@@ -12063,96 +12017,27 @@
         }
         lockSignupEmailInput.disabled = true;
         lockSignupRequestBtn.disabled = true;
-        lockSignupRequestBtn.textContent = "전송 중";
-        lockSignupVerifyForm.hidden = true;
-        setSignupStatus("인증번호를 보내는 중입니다...");
+        lockSignupRequestBtn.textContent = "신청 중";
+        setSignupStatus("가입 신청을 등록하는 중입니다...");
+        let submitted = false;
         try {
-          const payload = await fetchServerAuth("/api/signup/email/request", {
+          await fetchServerAuth("/api/signup/request", {
             method: "POST",
-            timeoutMs: 10000,
-            body: JSON.stringify({ email }),
+            timeoutMs: 15000,
+            body: JSON.stringify({ email, password }),
           });
-          signupOtpRequestId = String(payload?.requestId || "");
-          signupOtpExpiresAt = Number(payload?.expiresAt) || (Date.now() + 60 * 1000);
-          signupOtpMaskedEmail = String(payload?.maskedEmail || "");
-          lockSignupCodeInput.value = "";
-          lockSignupVerifyForm.hidden = false;
-          startSignupOtpTimer();
-          window.setTimeout(() => lockSignupCodeInput.focus(), 0);
-        } catch (error) {
-          lockSignupEmailInput.disabled = false;
-          lockSignupRequestBtn.disabled = false;
-          lockSignupRequestBtn.textContent = "인증번호 받기";
-          setSignupStatus(getSignupErrorMessage(error), true);
-        }
-      });
-
-      lockSignupVerifyForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const code = String(lockSignupCodeInput.value || "").replace(/\D/g, "").slice(0, 6);
-        const password = String(lockSignupPasswordInput.value || "");
-        const passwordConfirm = String(lockSignupPasswordConfirmInput.value || "");
-        lockSignupCodeInput.value = code;
-        if (!signupOtpRequestId || signupOtpExpiresAt <= Date.now()) {
-          setSignupStatus("인증번호가 만료되었습니다. 새 번호를 받아 주세요.", true);
-          renderSignupOtpCountdown();
-          return;
-        }
-        if (!/^\d{6}$/.test(code)) {
-          setSignupStatus("6자리 숫자를 입력해 주세요.", true);
-          lockSignupCodeInput.focus();
-          return;
-        }
-        const passwordMessage = getMemberPasswordValidationMessage(password);
-        if (passwordMessage || password !== passwordConfirm) {
-          setSignupStatus(passwordMessage || "비밀번호 확인이 일치하지 않습니다.", true);
-          return;
-        }
-
-        lockSignupVerifyBtn.disabled = true;
-        setSignupStatus("이메일을 확인하는 중입니다...");
-        try {
-          const payload = await fetchServerAuth("/api/signup/email/verify", {
-            method: "POST",
-            timeoutMs: 10000,
-            body: JSON.stringify({ requestId: signupOtpRequestId, code, password }),
-          });
-          stopSignupOtpTimer();
-          signupOtpRequestId = "";
-          signupOtpExpiresAt = 0;
-          lockSignupVerifyForm.hidden = true;
           lockSignupEmailInput.disabled = true;
-          lockSignupRequestBtn.disabled = true;
           lockSignupPasswordInput.value = "";
           lockSignupPasswordConfirmInput.value = "";
-          if (payload?.status === "owner") {
-            setSignupStatus("관리자 이메일입니다. 위 이메일 로그인에서 코드를 받아 로그인해 주세요.");
-          } else if (payload?.status === "active") {
-            setSignupStatus("이미 승인된 회원입니다. 회원 로그인에서 이메일과 비밀번호로 로그인해 주세요.");
-          } else if (payload?.status === "revoked") {
-            setSignupStatus("현재 로그인이 차단된 회원입니다. 관리자에게 문의해 주세요.", true);
-          } else {
-            setSignupStatus("이메일 확인이 완료됐습니다. 관리자가 승인하면 로그인할 수 있습니다.");
-          }
+          submitted = true;
+          setSignupStatus("가입 신청이 접수되었습니다. 관리자가 승인하면 회원 로그인을 이용할 수 있습니다.");
         } catch (error) {
-          const message = String(error?.message || "");
-          if (message === "email_otp_expired" || message === "email_otp_attempts_exceeded") {
-            signupOtpExpiresAt = 0;
-            stopSignupOtpTimer();
-            lockSignupEmailInput.disabled = false;
-            lockSignupRequestBtn.disabled = false;
-            lockSignupRequestBtn.textContent = "인증번호 다시 받기";
-          }
+          lockSignupEmailInput.disabled = false;
           setSignupStatus(getSignupErrorMessage(error), true);
-          lockSignupCodeInput.value = "";
-          lockSignupCodeInput.focus();
         } finally {
-          if (signupOtpExpiresAt > Date.now()) lockSignupVerifyBtn.disabled = false;
+          lockSignupRequestBtn.disabled = submitted;
+          lockSignupRequestBtn.textContent = submitted ? "신청 완료" : "가입 신청";
         }
-      });
-
-      lockSignupCodeInput.addEventListener("input", () => {
-        lockSignupCodeInput.value = String(lockSignupCodeInput.value || "").replace(/\D/g, "").slice(0, 6);
       });
 
       adminLaunchBtn.addEventListener("click", showAdminModal);

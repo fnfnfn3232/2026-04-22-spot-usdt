@@ -19,6 +19,8 @@ const EMAIL_OTP_SIGNUP_GLOBAL_RATE_KEY = "email-signup-global-rate";
 const MEMBER_PASSWORD_ATTEMPT_KEY_PREFIX = "member-password-attempt:";
 const MEMBER_PASSWORD_RESET_KEY_PREFIX = "member-password-reset:";
 const MEMBER_PASSWORD_RESET_GLOBAL_RATE_KEY = "member-password-reset-global-rate";
+const MEMBER_SIGNUP_RATE_KEY_PREFIX = "member-signup-rate:";
+const MEMBER_SIGNUP_GLOBAL_RATE_KEY = "member-signup-global-rate";
 const MEMBERS_KEY = "site-members-v1";
 const MEMBER_MAX_ITEMS = 200;
 const BOARD_MAX_POSTS = 200;
@@ -63,6 +65,9 @@ const MEMBER_PASSWORD_MIN_LENGTH = 10;
 const MEMBER_PASSWORD_MAX_LENGTH = 72;
 const MEMBER_PASSWORD_ITERATIONS = 210000;
 const MEMBER_PASSWORD_RESET_TTL_MS = 10 * 60 * 1000;
+const MEMBER_SIGNUP_COOLDOWN_MS = 60 * 1000;
+const MEMBER_SIGNUP_HOURLY_LIMIT = 5;
+const MEMBER_SIGNUP_GLOBAL_HOURLY_LIMIT = 30;
 const GITHUB_OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 const GITHUB_OIDC_JWKS_URL = `${GITHUB_OIDC_ISSUER}/.well-known/jwks`;
 const GITHUB_OIDC_REPOSITORY = "fnfnfn3232/coin";
@@ -536,12 +541,15 @@ function isEmailLoginConfigured(env) {
   return Boolean(String(env?.RESEND_API_KEY || "").trim() && getEmailLoginDestinations(env).length);
 }
 
-function isMemberRegistrationConfigured(env) {
+function isMemberEmailDeliveryConfigured(env) {
   const sender = String(env?.OTP_EMAIL_FROM || "").trim().toLowerCase();
   return isEmailLoginConfigured(env)
-    && String(env?.MEMBER_REGISTRATION_ENABLED || "true") !== "false"
     && Boolean(sender)
     && !sender.includes("onboarding@resend.dev");
+}
+
+function isMemberRegistrationEnabled(env) {
+  return String(env?.MEMBER_REGISTRATION_ENABLED || "true") !== "false";
 }
 
 function maskEmailAddress(value) {
@@ -2967,8 +2975,92 @@ export class BoardStore {
     return new Response(JSON.stringify(sessionPayload(token, claims)), { status: 200, headers });
   }
 
+  async handleMemberSignupRequest(request) {
+    if (!isMemberRegistrationEnabled(this.env)) {
+      return jsonResponse({ error: "member_registration_not_configured" }, 503, this.env);
+    }
+    let body = {};
+    try {
+      body = await request.json();
+    } catch (_error) {
+      return jsonResponse({ error: "invalid_json" }, 400, this.env);
+    }
+    const email = normalizeEmailAddress(body.email);
+    const password = String(body.password || "");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+      return jsonResponse({ error: "invalid_email_destination" }, 400, this.env);
+    }
+    const passwordError = getMemberPasswordError(password);
+    if (passwordError) return jsonResponse({ error: passwordError }, 400, this.env);
+
+    const now = Date.now();
+    const clientIpHash = await sha256Hex(getForwardedLoginClientIp(request));
+    const rateKey = `${MEMBER_SIGNUP_RATE_KEY_PREFIX}${clientIpHash}`;
+    const rate = {
+      windowStartedAt: 0,
+      count: 0,
+      lastRequestedAt: 0,
+      ...((await this.state.storage.get(rateKey)) || {}),
+    };
+    const globalRate = {
+      windowStartedAt: 0,
+      count: 0,
+      ...((await this.state.storage.get(MEMBER_SIGNUP_GLOBAL_RATE_KEY)) || {}),
+    };
+    const retryAt = Number(rate.lastRequestedAt) + MEMBER_SIGNUP_COOLDOWN_MS;
+    if (retryAt > now) {
+      return jsonResponse({
+        error: "member_signup_rate_limited",
+        retryAfterSeconds: Math.max(1, Math.ceil((retryAt - now) / 1000)),
+      }, 429, this.env);
+    }
+    const windowStartedAt = Number(rate.windowStartedAt) || now;
+    const inCurrentWindow = now - windowStartedAt < 60 * 60 * 1000;
+    const hourlyCount = inCurrentWindow ? Math.max(0, Math.floor(Number(rate.count) || 0)) : 0;
+    const globalWindowStartedAt = Number(globalRate.windowStartedAt) || now;
+    const inGlobalWindow = now - globalWindowStartedAt < 60 * 60 * 1000;
+    const globalHourlyCount = inGlobalWindow ? Math.max(0, Math.floor(Number(globalRate.count) || 0)) : 0;
+    if (hourlyCount >= MEMBER_SIGNUP_HOURLY_LIMIT || globalHourlyCount >= MEMBER_SIGNUP_GLOBAL_HOURLY_LIMIT) {
+      return jsonResponse({ error: "member_signup_rate_limited", retryAfterSeconds: 3600 }, 429, this.env);
+    }
+    await this.state.storage.put(rateKey, {
+      windowStartedAt: inCurrentWindow ? windowStartedAt : now,
+      count: hourlyCount + 1,
+      lastRequestedAt: now,
+    });
+    await this.state.storage.put(MEMBER_SIGNUP_GLOBAL_RATE_KEY, {
+      windowStartedAt: inGlobalWindow ? globalWindowStartedAt : now,
+      count: globalHourlyCount + 1,
+    });
+
+    const passwordCredentials = await createMemberPasswordCredentials(password);
+    const members = await this.readMembers();
+    const existingMember = members.find((item) => item.email === email);
+    const isOwnerAccount = Boolean(getAllowedEmailLoginDestination(email, this.env));
+    if (!existingMember && !isOwnerAccount) {
+      if (members.length >= MEMBER_MAX_ITEMS) {
+        return jsonResponse({ ok: true, status: "pending" }, 200, this.env);
+      }
+      members.push(normalizeMemberRecord({
+        id: crypto.randomUUID(),
+        email,
+        emailHash: await sha256Hex(email),
+        ...passwordCredentials,
+        authVersion: 1,
+        status: "pending",
+        requestedAt: now,
+        emailVerifiedAt: 0,
+        updatedAt: now,
+      }));
+      await this.writeMembers(members);
+    }
+
+    // Always return the same response so this endpoint cannot be used to enumerate accounts.
+    return jsonResponse({ ok: true, status: "pending" }, 200, this.env);
+  }
+
   async handleSignupOtpRequest(request) {
-    if (!isMemberRegistrationConfigured(this.env)) {
+    if (!isMemberEmailDeliveryConfigured(this.env)) {
       return jsonResponse({ error: "member_registration_not_configured" }, 503, this.env);
     }
     let body = {};
@@ -3062,7 +3154,7 @@ export class BoardStore {
   }
 
   async handleSignupOtpVerify(request) {
-    if (!isMemberRegistrationConfigured(this.env)) {
+    if (!isMemberEmailDeliveryConfigured(this.env)) {
       return jsonResponse({ error: "member_registration_not_configured" }, 503, this.env);
     }
     let body = {};
@@ -3209,7 +3301,7 @@ export class BoardStore {
   }
 
   async handleMemberPasswordResetRequest(request) {
-    if (!isMemberRegistrationConfigured(this.env)) {
+    if (!isMemberEmailDeliveryConfigured(this.env)) {
       return jsonResponse({ error: "member_registration_not_configured" }, 503, this.env);
     }
     let body = {};
@@ -3352,19 +3444,22 @@ export class BoardStore {
     member.updatedAt = now;
     await this.writeMembers(members);
     const statusText = member.status === "active" ? "approved" : member.status;
-    let emailSent = true;
-    try {
-      await sendMemberEmail({
-        recipient: member.email,
-        subject: `ComaCap membership ${statusText}`,
-        text: member.status === "active"
-          ? "Your ComaCap membership has been approved. You can now log in with your email address and the password you chose during signup."
-          : `Your ComaCap membership status is now ${member.status}.`,
-        idempotencyKey: `coin-member-${action}-${member.id}-${now}`,
-      }, this.env);
-    } catch (error) {
-      emailSent = false;
-      console.error("member_status_email_failed", error);
+    let emailSent = null;
+    if (isMemberEmailDeliveryConfigured(this.env)) {
+      emailSent = true;
+      try {
+        await sendMemberEmail({
+          recipient: member.email,
+          subject: `ComaCap membership ${statusText}`,
+          text: member.status === "active"
+            ? "Your ComaCap membership has been approved. You can now log in with your email address and the password you chose during signup."
+            : `Your ComaCap membership status is now ${member.status}.`,
+          idempotencyKey: `coin-member-${action}-${member.id}-${now}`,
+        }, this.env);
+      } catch (error) {
+        emailSent = false;
+        console.error("member_status_email_failed", error);
+      }
     }
     return jsonResponse({
       ok: true,
@@ -3395,11 +3490,8 @@ export class BoardStore {
     if (request.method === "POST" && url.pathname === "/api/member/password/reset/confirm") {
       return this.handleMemberPasswordResetConfirm(request);
     }
-    if (request.method === "POST" && url.pathname === "/api/signup/email/request") {
-      return this.handleSignupOtpRequest(request);
-    }
-    if (request.method === "POST" && url.pathname === "/api/signup/email/verify") {
-      return this.handleSignupOtpVerify(request);
+    if (request.method === "POST" && url.pathname === "/api/signup/request") {
+      return this.handleMemberSignupRequest(request);
     }
     if (request.method === "GET" && url.pathname === "/api/session") {
       return this.handleSessionRequest(request);
@@ -3719,11 +3811,10 @@ export default {
       }, 200, env);
     }
     if (url.pathname === "/api/signup/status" && request.method === "GET") {
-      const sender = String(env.OTP_EMAIL_FROM || "").trim().toLowerCase();
       return jsonResponse({
-        enabled: isMemberRegistrationConfigured(env),
-        expiresInSeconds: Math.floor(EMAIL_OTP_TTL_MS / 1000),
-        senderSetupRequired: !sender || sender.includes("onboarding@resend.dev"),
+        enabled: isMemberRegistrationEnabled(env),
+        verificationRequired: false,
+        passwordResetEnabled: isMemberEmailDeliveryConfigured(env),
       }, 200, env);
     }
     if (
@@ -3732,8 +3823,7 @@ export default {
         url.pathname === "/api/login/email/request"
         || url.pathname === "/api/login/email/verify"
         || url.pathname === "/api/login/member/password"
-        || url.pathname === "/api/signup/email/request"
-        || url.pathname === "/api/signup/email/verify"
+        || url.pathname === "/api/signup/request"
         || url.pathname === "/api/member/password/reset/request"
         || url.pathname === "/api/member/password/reset/confirm"
       )

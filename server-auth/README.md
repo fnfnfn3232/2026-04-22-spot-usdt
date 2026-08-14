@@ -15,9 +15,9 @@ The current frontend is wired to use this API when `window.SERVER_AUTH_API_BASE`
 - Protected APIs, such as `/api/news`, return data only when that cookie is valid.
 - Coinness news is stored and returned as preview-only data. Full original text is intentionally not stored.
 - Board attachments can be stored in the private Cloudflare R2 bucket bound as `BOARD_MEDIA_BUCKET`.
-- New members choose their own password, verify ownership of their email address, and wait for approval in the site admin panel.
+- New members enter an email address and choose their own password, then wait for approval in the site admin panel.
 - Member passwords are stored only as salted `PBKDF2-SHA256` hashes. Plaintext passwords are never emailed to the administrator or saved in member records.
-- Approved members log in with their email address and chosen password. A forgotten password is reset with a one-time code sent to that member's own email address.
+- Approved members log in with their email address and chosen password. When a verified sender is configured, a forgotten password can be reset with a one-time code sent to that member's own email address.
 
 ## Required Cloudflare Worker environment variables
 
@@ -36,9 +36,8 @@ The current frontend is wired to use this API when `window.SERVER_AUTH_API_BASE`
 - `OTP_EMAIL_TO_2`
   - Optional second private destination address. Only these registered addresses can request a code.
 - `OTP_EMAIL_FROM`
-  - Verified sender for member signup mail, for example `코마캡 <login@your-domain.example>`.
-  - Resend's `onboarding@resend.dev` test sender can only send to the account owner, so member signup stays hidden until this uses a verified domain.
-  - This is configured once. It does not need to be changed for each new member.
+  - Optional verified sender for member password-reset and status emails, for example `ComaCap <login@your-domain.example>`.
+  - Member signup and administrator approval work without this setting.
 - `MEMBER_REGISTRATION_ENABLED`
   - Optional. Set to `false` to hide and disable new signup requests without deleting existing members.
 - `NEWS_LIMIT`
@@ -83,14 +82,18 @@ Content-Type: application/json
 {"email":"member@example.com","password":"the member password"}
 ```
 
-Member signup verifies the member's email and stores a pending approval request:
+Member signup stores a pending approval request with the email address and password chosen on the site:
 
 ```http
-POST /api/signup/email/request
-POST /api/signup/email/verify
+POST /api/signup/request
+Content-Type: application/json
+
+{"email":"member@example.com","password":"the member password"}
 ```
 
-Forgotten passwords are reset with a 10-minute code delivered to the approved member's own email:
+The submitted email address is not verified. Review the applicant in the site admin screen and approve only people you recognize. Passwords are stored only as salted PBKDF2 hashes.
+
+If a verified sender is configured, forgotten passwords can be reset with a 10-minute code delivered to the approved member's own email:
 
 ```http
 POST /api/member/password/reset/request
@@ -142,7 +145,7 @@ Add these GitHub repository secrets:
 - `RESEND_API_KEY_2` (optional key for the second destination when using the default Resend test sender)
 - `OTP_EMAIL_TO` (optional, required for email code login)
 - `OTP_EMAIL_TO_2` (optional second permitted email address)
-- `OTP_EMAIL_FROM` (required for member signup; use a Resend-verified sender domain)
+- `OTP_EMAIL_FROM` (optional; use a Resend-verified sender domain for member password-reset and status emails)
 
 The deploy workflow also creates/uses the private R2 bucket named `coin-board-media`. The Cloudflare API token needs permission to deploy Workers and manage/read/write R2 buckets.
 
