@@ -15,6 +15,9 @@ const EMAIL_OTP_KEY_PREFIX = "email-login-otp:";
 const EMAIL_OTP_RATE_KEY_PREFIX = "email-login-rate:";
 const EMAIL_OTP_CURRENT_KEY_PREFIX = "email-login-current:";
 const EMAIL_OTP_GLOBAL_RATE_KEY = "email-login-global-rate";
+const EMAIL_OTP_SIGNUP_GLOBAL_RATE_KEY = "email-signup-global-rate";
+const MEMBERS_KEY = "site-members-v1";
+const MEMBER_MAX_ITEMS = 200;
 const BOARD_MAX_POSTS = 200;
 const BOARD_MAX_MEDIA = 10;
 const BOARD_MAX_COMMENTS = 100;
@@ -477,6 +480,14 @@ function isEmailLoginConfigured(env) {
   return Boolean(String(env?.RESEND_API_KEY || "").trim() && getEmailLoginDestinations(env).length);
 }
 
+function isMemberRegistrationConfigured(env) {
+  const sender = String(env?.OTP_EMAIL_FROM || "").trim().toLowerCase();
+  return isEmailLoginConfigured(env)
+    && String(env?.MEMBER_REGISTRATION_ENABLED || "true") !== "false"
+    && Boolean(sender)
+    && !sender.includes("onboarding@resend.dev");
+}
+
 function maskEmailAddress(value) {
   const email = String(value || "").trim();
   const at = email.indexOf("@");
@@ -500,8 +511,8 @@ async function getEmailOtpHash(requestId, code, env) {
   return hmacHex(env.SESSION_SECRET, `${requestId}.${code}`);
 }
 
-async function getEmailOtpCurrentKey(recipient) {
-  return `${EMAIL_OTP_CURRENT_KEY_PREFIX}${await sha256Hex(recipient)}`;
+async function getEmailOtpCurrentKey(recipient, purpose = "login") {
+  return `${EMAIL_OTP_CURRENT_KEY_PREFIX}${purpose}:${await sha256Hex(recipient)}`;
 }
 
 async function clearCurrentEmailOtp(storage, record, requestId) {
@@ -540,6 +551,71 @@ async function sendEmailOtp(code, requestId, recipient, env) {
   }
 }
 
+async function sendMemberEmail({ recipient, subject, text, idempotencyKey }, env) {
+  if (!isEmailLoginConfigured(env)) throw new Error("email_login_not_configured");
+  const apiKey = getEmailLoginApiKey(recipient, env);
+  if (!apiKey) throw new Error("email_login_not_configured");
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({
+      from: String(env.OTP_EMAIL_FROM || "ComaCap <onboarding@resend.dev>").trim(),
+      to: [recipient],
+      subject,
+      text,
+    }),
+  });
+  if (!response.ok) {
+    const message = (await response.text()).slice(0, 500);
+    console.error("member_email_send_failed", response.status, message);
+    throw new Error("email_send_failed");
+  }
+}
+
+async function sendSignupEmailOtp(code, requestId, recipient, env) {
+  return sendMemberEmail({
+    recipient,
+    subject: "ComaCap signup verification code",
+    text: `Your ComaCap signup verification code is ${code}.\n\nThis code expires in 1 minute. Do not share it with anyone.`,
+    idempotencyKey: `coin-signup-${requestId}`,
+  }, env);
+}
+
+function normalizeMemberStatus(value) {
+  return ["pending", "active", "rejected", "revoked"].includes(value) ? value : "pending";
+}
+
+function normalizeMemberRecord(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const id = String(raw.id || "").trim();
+  const email = normalizeEmailAddress(raw.email);
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+  return {
+    id,
+    email,
+    emailHash: String(raw.emailHash || ""),
+    status: normalizeMemberStatus(raw.status),
+    requestedAt: Math.max(0, Math.floor(Number(raw.requestedAt) || 0)),
+    emailVerifiedAt: Math.max(0, Math.floor(Number(raw.emailVerifiedAt) || 0)),
+    approvedAt: Math.max(0, Math.floor(Number(raw.approvedAt) || 0)),
+    rejectedAt: Math.max(0, Math.floor(Number(raw.rejectedAt) || 0)),
+    revokedAt: Math.max(0, Math.floor(Number(raw.revokedAt) || 0)),
+    updatedAt: Math.max(0, Math.floor(Number(raw.updatedAt) || 0)),
+    lastLoginAt: Math.max(0, Math.floor(Number(raw.lastLoginAt) || 0)),
+  };
+}
+
+function publicAdminMember(raw) {
+  const member = normalizeMemberRecord(raw);
+  if (!member) return null;
+  const { emailHash: _emailHash, ...safe } = member;
+  return safe;
+}
+
 function normalizeLoginAttemptRecord(raw) {
   return {
     failures: Math.max(0, Math.floor(Number(raw?.failures) || 0)),
@@ -567,10 +643,14 @@ function loginLockedResponse(record, env) {
   }), { status: 429, headers });
 }
 
-async function createSessionToken(env) {
+async function createSessionToken(env, claims = {}) {
   const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
   const nonce = crypto.randomUUID();
-  const payload = `${exp}.${nonce}`;
+  const role = claims.role === "member" ? "member" : "admin";
+  const subject = role === "member" && /^[0-9a-f-]{36}$/i.test(String(claims.subject || ""))
+    ? String(claims.subject)
+    : "owner";
+  const payload = `v2.${exp}.${nonce}.${role}.${subject}`;
   const signature = await hmacHex(env.SESSION_SECRET, payload);
   return `${payload}.${signature}`;
 }
@@ -593,36 +673,61 @@ function appendClearedSessionCookies(headers) {
   headers.append("Set-Cookie", `${PARTITIONED_COOKIE_NAME}=; HttpOnly; Secure; SameSite=None; Partitioned; Path=/; Max-Age=0`);
 }
 
-function sessionPayload(token) {
-  const expiresAt = Number(String(token || "").split(".")[0]) * 1000;
+function sessionPayload(token, claims = null) {
+  const parts = String(token || "").split(".");
+  const expiresAt = Number(parts[0] === "v2" ? parts[1] : parts[0]) * 1000;
   return {
     ok: true,
     token,
     expiresAt: Number.isFinite(expiresAt) ? expiresAt : 0,
+    role: claims?.role === "member" ? "member" : "admin",
   };
 }
 
-async function isValidSessionToken(token, env) {
-  const parts = token.split(".");
-  if (parts.length !== 3) return false;
-  const [expText, nonce, signature] = parts;
+async function getSessionClaims(token, env) {
+  const parts = String(token || "").split(".");
+  if (parts.length === 3) {
+    const [expText, nonce, signature] = parts;
+    const exp = Number(expText);
+    if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return null;
+    const expected = await hmacHex(env.SESSION_SECRET, `${expText}.${nonce}`);
+    return timingSafeEqual(signature, expected)
+      ? { role: "admin", subject: "legacy", expiresAt: exp * 1000, token }
+      : null;
+  }
+  if (parts.length !== 6 || parts[0] !== "v2") return null;
+  const [version, expText, nonce, role, subject, signature] = parts;
   const exp = Number(expText);
-  if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return false;
-  const expected = await hmacHex(env.SESSION_SECRET, `${expText}.${nonce}`);
-  return timingSafeEqual(signature, expected);
+  if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return null;
+  if (!["admin", "member"].includes(role)) return null;
+  if (role === "member" && !/^[0-9a-f-]{36}$/i.test(subject)) return null;
+  const expected = await hmacHex(env.SESSION_SECRET, `${version}.${expText}.${nonce}.${role}.${subject}`);
+  return timingSafeEqual(signature, expected)
+    ? { role, subject, expiresAt: exp * 1000, token }
+    : null;
 }
 
-async function isAuthenticated(request, env) {
+async function isValidSessionToken(token, env) {
+  return Boolean(await getSessionClaims(token, env));
+}
+
+async function getRequestSessionClaims(request, env) {
   const cookieTokens = [
     getCookie(request, COOKIE_NAME),
     getCookie(request, PARTITIONED_COOKIE_NAME),
   ].filter(Boolean);
   const bearerToken = getBearerToken(request);
-  for (const cookieToken of cookieTokens) {
-    if (await isValidSessionToken(cookieToken, env)) return true;
+  const tokens = [...cookieTokens];
+  if (bearerToken && !tokens.includes(bearerToken)) tokens.push(bearerToken);
+  for (const token of tokens) {
+    const claims = await getSessionClaims(token, env);
+    if (claims) return claims;
   }
-  if (bearerToken && !cookieTokens.includes(bearerToken) && await isValidSessionToken(bearerToken, env)) return true;
-  return false;
+  return null;
+}
+
+async function isAuthenticated(request, env) {
+  return Boolean(await getRequestSessionClaims(request, env));
 }
 
 function cleanNewsText(value) {
@@ -1052,6 +1157,19 @@ async function writeBoardCategories(env, categories) {
 async function requireAuth(request, env) {
   if (await isAuthenticated(request, env)) return null;
   return jsonResponse({ error: "auth_required" }, 401, env);
+}
+
+async function requireActiveStoredAuth(request, env) {
+  const claims = await getRequestSessionClaims(request, env);
+  if (!claims) return jsonResponse({ error: "auth_required" }, 401, env);
+  if (claims.role === "admin") return null;
+  if (!env.BOARD_STORE) return null;
+  const id = env.BOARD_STORE.idFromName("free-board");
+  const response = await env.BOARD_STORE.get(id).fetch(new Request("https://board-store/api/session/check", {
+    method: "GET",
+    headers: request.headers,
+  }));
+  return response.ok ? null : jsonResponse({ error: "auth_required" }, 401, env);
 }
 
 function base64UrlToBytes(value) {
@@ -1890,6 +2008,56 @@ export class BoardStore {
     this.env = env;
   }
 
+  async readMembers() {
+    const stored = await this.state.storage.get(MEMBERS_KEY);
+    if (!Array.isArray(stored)) return [];
+    return stored
+      .map((member) => normalizeMemberRecord(member))
+      .filter(Boolean)
+      .sort((a, b) => b.requestedAt - a.requestedAt)
+      .slice(0, MEMBER_MAX_ITEMS);
+  }
+
+  async writeMembers(members) {
+    const normalized = (Array.isArray(members) ? members : [])
+      .map((member) => normalizeMemberRecord(member))
+      .filter(Boolean)
+      .sort((a, b) => b.requestedAt - a.requestedAt)
+      .slice(0, MEMBER_MAX_ITEMS);
+    await this.state.storage.put(MEMBERS_KEY, normalized);
+    return normalized;
+  }
+
+  async getActiveSessionClaims(request) {
+    const claims = await getRequestSessionClaims(request, this.env);
+    if (!claims) return null;
+    if (claims.role === "admin") return claims;
+    const member = (await this.readMembers()).find((item) => item.id === claims.subject);
+    return member?.status === "active" ? claims : null;
+  }
+
+  async requireActiveAuth(request) {
+    if (await this.getActiveSessionClaims(request)) return null;
+    return jsonResponse({ error: "auth_required" }, 401, this.env);
+  }
+
+  async requireAdminAuth(request, body = null) {
+    const password = String(body?.adminPassword || body?.password || "");
+    if (password && await isAdminPassword(password, this.env)) return null;
+    const claims = await this.getActiveSessionClaims(request);
+    if (claims?.role === "admin") return null;
+    return jsonResponse({ error: password ? "invalid_password" : "admin_required" }, 401, this.env);
+  }
+
+  async handleSessionRequest(request) {
+    const claims = await this.getActiveSessionClaims(request);
+    if (!claims) return jsonResponse({ error: "auth_required" }, 401, this.env);
+    const token = await createSessionToken(this.env, claims);
+    const headers = new Headers(jsonResponse({ ok: true }, 200, this.env).headers);
+    appendSessionCookies(headers, token);
+    return new Response(JSON.stringify(sessionPayload(token, claims)), { status: 200, headers });
+  }
+
   async readPosts() {
     const stored = await this.state.storage.get(BOARD_POSTS_KEY);
     if (!Array.isArray(stored)) return [];
@@ -2543,7 +2711,13 @@ export class BoardStore {
       return jsonResponse({ error: "invalid_json" }, 400, this.env);
     }
     const requestedEmail = normalizeEmailAddress(body.email);
-    const recipient = getAllowedEmailLoginDestination(requestedEmail, this.env);
+    const ownerRecipient = getAllowedEmailLoginDestination(requestedEmail, this.env);
+    const approvedMember = (await this.readMembers()).find(
+      (member) => member.email === requestedEmail && member.status === "active"
+    );
+    const recipient = ownerRecipient || approvedMember?.email || "";
+    const role = ownerRecipient ? "admin" : (approvedMember ? "member" : "");
+    const subject = ownerRecipient ? "owner" : (approvedMember?.id || "");
 
     const now = Date.now();
     const clientIpHash = await sha256Hex(getForwardedLoginClientIp(request));
@@ -2598,7 +2772,7 @@ export class BoardStore {
       lastSentAt: sentAt,
     });
 
-    const currentKey = await getEmailOtpCurrentKey(recipient || requestedEmail || requestId);
+    const currentKey = await getEmailOtpCurrentKey(recipient || requestedEmail || requestId, "login");
     const previousRequestId = String(await this.state.storage.get(currentKey) || "");
     const code = generateEmailOtpCode();
 
@@ -2620,6 +2794,9 @@ export class BoardStore {
       expiresAt,
       attempts: 0,
       currentKey,
+      purpose: "login",
+      role,
+      subject,
     });
     await this.state.storage.put(currentKey, requestId);
 
@@ -2655,6 +2832,11 @@ export class BoardStore {
       await clearCurrentEmailOtp(this.state.storage, record, requestId);
       return jsonResponse({ error: "email_otp_expired" }, 401, this.env);
     }
+    if (record.purpose !== "login" || !["admin", "member"].includes(record.role)) {
+      await this.state.storage.delete(otpKey);
+      await clearCurrentEmailOtp(this.state.storage, record, requestId);
+      return jsonResponse({ error: "invalid_email_otp" }, 401, this.env);
+    }
 
     const attempts = Math.max(0, Math.floor(Number(record.attempts) || 0));
     const valid = timingSafeEqual(
@@ -2677,10 +2859,249 @@ export class BoardStore {
 
     await this.state.storage.delete(otpKey);
     await clearCurrentEmailOtp(this.state.storage, record, requestId);
-    const token = await createSessionToken(this.env);
+    if (record.role === "member") {
+      const members = await this.readMembers();
+      const member = members.find((item) => item.id === record.subject);
+      if (!member || member.status !== "active") {
+        return jsonResponse({ error: "member_not_approved" }, 403, this.env);
+      }
+      member.lastLoginAt = Date.now();
+      member.updatedAt = Date.now();
+      await this.writeMembers(members);
+    }
+    const claims = { role: record.role, subject: record.subject };
+    const token = await createSessionToken(this.env, claims);
     const headers = new Headers(jsonResponse({ ok: true }, 200, this.env).headers);
     appendSessionCookies(headers, token);
-    return new Response(JSON.stringify(sessionPayload(token)), { status: 200, headers });
+    return new Response(JSON.stringify(sessionPayload(token, claims)), { status: 200, headers });
+  }
+
+  async handleSignupOtpRequest(request) {
+    if (!isMemberRegistrationConfigured(this.env)) {
+      return jsonResponse({ error: "member_registration_not_configured" }, 503, this.env);
+    }
+    let body = {};
+    try {
+      body = await request.json();
+    } catch (_error) {
+      return jsonResponse({ error: "invalid_json" }, 400, this.env);
+    }
+    const email = normalizeEmailAddress(body.email);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+      return jsonResponse({ error: "invalid_email_destination" }, 400, this.env);
+    }
+
+    const now = Date.now();
+    const clientIpHash = await sha256Hex(getForwardedLoginClientIp(request));
+    const emailHash = await sha256Hex(email);
+    const rateKey = `${EMAIL_OTP_RATE_KEY_PREFIX}signup:${clientIpHash}:${emailHash}`;
+    const rate = {
+      windowStartedAt: 0,
+      count: 0,
+      lastSentAt: 0,
+      ...((await this.state.storage.get(rateKey)) || {}),
+    };
+    const globalRate = {
+      windowStartedAt: 0,
+      count: 0,
+      lastSentAt: 0,
+      ...((await this.state.storage.get(EMAIL_OTP_SIGNUP_GLOBAL_RATE_KEY)) || {}),
+    };
+    const retryAt = Math.max(
+      Number(rate.lastSentAt) + EMAIL_OTP_RESEND_COOLDOWN_MS,
+      Number(globalRate.lastSentAt) + EMAIL_OTP_RESEND_COOLDOWN_MS
+    );
+    if (retryAt > now) {
+      return jsonResponse({
+        error: "email_otp_rate_limited",
+        retryAfterSeconds: Math.max(1, Math.ceil((retryAt - now) / 1000)),
+      }, 429, this.env);
+    }
+    const windowStartedAt = Number(rate.windowStartedAt) || now;
+    const inCurrentWindow = now - windowStartedAt < 60 * 60 * 1000;
+    const hourlyCount = inCurrentWindow ? Math.max(0, Math.floor(Number(rate.count) || 0)) : 0;
+    const globalWindowStartedAt = Number(globalRate.windowStartedAt) || now;
+    const inGlobalWindow = now - globalWindowStartedAt < 60 * 60 * 1000;
+    const globalHourlyCount = inGlobalWindow ? Math.max(0, Math.floor(Number(globalRate.count) || 0)) : 0;
+    if (hourlyCount >= EMAIL_OTP_HOURLY_LIMIT || globalHourlyCount >= EMAIL_OTP_GLOBAL_HOURLY_LIMIT) {
+      return jsonResponse({ error: "email_otp_hourly_limit", retryAfterSeconds: 3600 }, 429, this.env);
+    }
+
+    const requestId = crypto.randomUUID();
+    const sentAt = Date.now();
+    const expiresAt = sentAt + EMAIL_OTP_TTL_MS;
+    const currentKey = await getEmailOtpCurrentKey(email, "signup");
+    const previousRequestId = String(await this.state.storage.get(currentKey) || "");
+    const code = generateEmailOtpCode();
+    const ownerAccount = Boolean(getAllowedEmailLoginDestination(email, this.env));
+    await this.state.storage.put(rateKey, {
+      windowStartedAt: inCurrentWindow ? windowStartedAt : now,
+      count: hourlyCount + 1,
+      lastSentAt: sentAt,
+    });
+    await this.state.storage.put(EMAIL_OTP_SIGNUP_GLOBAL_RATE_KEY, {
+      windowStartedAt: inGlobalWindow ? globalWindowStartedAt : sentAt,
+      count: globalHourlyCount + 1,
+      lastSentAt: sentAt,
+    });
+    try {
+      await sendSignupEmailOtp(code, requestId, email, this.env);
+    } catch (error) {
+      return jsonResponse({ error: error instanceof Error ? error.message : "email_send_failed" }, 503, this.env);
+    }
+
+    if (previousRequestId) await this.state.storage.delete(`${EMAIL_OTP_KEY_PREFIX}${previousRequestId}`);
+    await this.state.storage.put(`${EMAIL_OTP_KEY_PREFIX}${requestId}`, {
+      codeHash: await getEmailOtpHash(requestId, code, this.env),
+      expiresAt,
+      attempts: 0,
+      currentKey,
+      purpose: "signup",
+      email,
+      emailHash,
+      ownerAccount,
+    });
+    await this.state.storage.put(currentKey, requestId);
+    return jsonResponse({
+      ok: true,
+      requestId,
+      expiresAt,
+      maskedEmail: maskEmailAddress(email),
+    }, 200, this.env);
+  }
+
+  async handleSignupOtpVerify(request) {
+    if (!isMemberRegistrationConfigured(this.env)) {
+      return jsonResponse({ error: "member_registration_not_configured" }, 503, this.env);
+    }
+    let body = {};
+    try {
+      body = await request.json();
+    } catch (_error) {
+      return jsonResponse({ error: "invalid_json" }, 400, this.env);
+    }
+    const requestId = String(body.requestId || "").trim();
+    const code = String(body.code || "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(requestId) || !/^\d{6}$/.test(code)) {
+      return jsonResponse({ error: "invalid_email_otp" }, 401, this.env);
+    }
+    const otpKey = `${EMAIL_OTP_KEY_PREFIX}${requestId}`;
+    const record = await this.state.storage.get(otpKey);
+    if (!record || record.purpose !== "signup" || Number(record.expiresAt) <= Date.now()) {
+      await this.state.storage.delete(otpKey);
+      await clearCurrentEmailOtp(this.state.storage, record, requestId);
+      return jsonResponse({ error: "email_otp_expired" }, 401, this.env);
+    }
+    const attempts = Math.max(0, Math.floor(Number(record.attempts) || 0));
+    const valid = timingSafeEqual(String(record.codeHash || ""), await getEmailOtpHash(requestId, code, this.env));
+    if (!valid) {
+      const nextAttempts = attempts + 1;
+      if (nextAttempts >= EMAIL_OTP_VERIFY_LIMIT) {
+        await this.state.storage.delete(otpKey);
+        await clearCurrentEmailOtp(this.state.storage, record, requestId);
+        return jsonResponse({ error: "email_otp_attempts_exceeded" }, 401, this.env);
+      }
+      await this.state.storage.put(otpKey, { ...record, attempts: nextAttempts });
+      return jsonResponse({
+        error: "invalid_email_otp",
+        remainingAttempts: EMAIL_OTP_VERIFY_LIMIT - nextAttempts,
+      }, 401, this.env);
+    }
+
+    await this.state.storage.delete(otpKey);
+    await clearCurrentEmailOtp(this.state.storage, record, requestId);
+    if (record.ownerAccount) {
+      return jsonResponse({ ok: true, status: "owner" }, 200, this.env);
+    }
+    const now = Date.now();
+    const members = await this.readMembers();
+    let member = members.find((item) => item.email === record.email);
+    if (!member) {
+      member = normalizeMemberRecord({
+        id: crypto.randomUUID(),
+        email: record.email,
+        emailHash: record.emailHash || await sha256Hex(record.email),
+        status: "pending",
+        requestedAt: now,
+        emailVerifiedAt: now,
+        updatedAt: now,
+      });
+      members.push(member);
+    } else if (member.status !== "active" && member.status !== "revoked") {
+      member.status = "pending";
+      member.requestedAt = now;
+      member.emailVerifiedAt = now;
+      member.updatedAt = now;
+      member.rejectedAt = 0;
+    }
+    await this.writeMembers(members);
+
+    if (member.status === "pending") {
+      await Promise.all(getEmailLoginDestinations(this.env).map((recipient, index) =>
+        sendMemberEmail({
+          recipient,
+          subject: "ComaCap membership approval requested",
+          text: `A verified signup request is waiting for approval.\n\nApplicant: ${member.email}\n\nOpen the ComaCap admin panel to approve or reject this request.`,
+          idempotencyKey: `coin-member-request-${member.id}-${member.requestedAt}-${index}`,
+        }, this.env).catch((error) => console.error("member_admin_notification_failed", error))
+      ));
+    }
+    return jsonResponse({ ok: true, status: member.status }, 200, this.env);
+  }
+
+  async handleMembersAdmin(request, url) {
+    const body = await parseJsonBody(request);
+    const authResponse = await this.requireAdminAuth(request, body);
+    if (authResponse) return authResponse;
+    const action = decodeURIComponent(url.pathname.replace(/^\/api\/admin\/members\/?/, "")) || "list";
+    let members = await this.readMembers();
+    if (action === "list") {
+      return jsonResponse({ members: members.map(publicAdminMember).filter(Boolean) }, 200, this.env);
+    }
+    const memberId = String(body?.memberId || "").trim();
+    const member = members.find((item) => item.id === memberId);
+    if (!member) return jsonResponse({ error: "member_not_found" }, 404, this.env);
+    const now = Date.now();
+    if (action === "approve" || action === "restore") {
+      member.status = "active";
+      member.approvedAt = now;
+      member.rejectedAt = 0;
+      member.revokedAt = 0;
+    } else if (action === "reject") {
+      member.status = "rejected";
+      member.rejectedAt = now;
+    } else if (action === "revoke") {
+      member.status = "revoked";
+      member.revokedAt = now;
+    } else if (action === "delete") {
+      members = members.filter((item) => item.id !== memberId);
+      await this.writeMembers(members);
+      return jsonResponse({ ok: true, members: members.map(publicAdminMember).filter(Boolean) }, 200, this.env);
+    } else {
+      return jsonResponse({ error: "invalid_member_action" }, 400, this.env);
+    }
+    member.updatedAt = now;
+    await this.writeMembers(members);
+    const statusText = member.status === "active" ? "approved" : member.status;
+    let emailSent = true;
+    try {
+      await sendMemberEmail({
+        recipient: member.email,
+        subject: `ComaCap membership ${statusText}`,
+        text: member.status === "active"
+          ? "Your ComaCap membership has been approved. You can now log in with an email verification code."
+          : `Your ComaCap membership status is now ${member.status}.`,
+        idempotencyKey: `coin-member-${action}-${member.id}-${now}`,
+      }, this.env);
+    } catch (error) {
+      emailSent = false;
+      console.error("member_status_email_failed", error);
+    }
+    return jsonResponse({
+      ok: true,
+      emailSent,
+      members: members.map(publicAdminMember).filter(Boolean),
+    }, 200, this.env);
   }
 
   async fetch(request) {
@@ -2696,6 +3117,24 @@ export class BoardStore {
     if (request.method === "POST" && url.pathname === "/api/login/email/verify") {
       return this.handleEmailOtpVerify(request);
     }
+    if (request.method === "POST" && url.pathname === "/api/signup/email/request") {
+      return this.handleSignupOtpRequest(request);
+    }
+    if (request.method === "POST" && url.pathname === "/api/signup/email/verify") {
+      return this.handleSignupOtpVerify(request);
+    }
+    if (request.method === "GET" && url.pathname === "/api/session") {
+      return this.handleSessionRequest(request);
+    }
+    if (request.method === "GET" && url.pathname === "/api/session/check") {
+      const claims = await this.getActiveSessionClaims(request);
+      return claims
+        ? jsonResponse({ ok: true, role: claims.role }, 200, this.env)
+        : jsonResponse({ error: "auth_required" }, 401, this.env);
+    }
+    if (request.method === "POST" && url.pathname.startsWith("/api/admin/members")) {
+      return this.handleMembersAdmin(request, url);
+    }
 
     if (request.method === "POST" && url.pathname === "/api/market-data") {
       if (request.headers.get("X-Market-Data-Sync") !== "1") {
@@ -2706,21 +3145,15 @@ export class BoardStore {
 
     if (request.method === "POST" && url.pathname === "/api/usage/stats") {
       const body = await parseJsonOrPlainPasswordBody(request);
-      const authenticated = await isAuthenticated(request, this.env);
-      const providedPassword = body?.adminPassword || body?.password || "";
-      if (!authenticated && !providedPassword) {
-        return jsonResponse({ error: "auth_required" }, 401, this.env);
-      }
-      if (providedPassword && !await isAdminPassword(providedPassword, this.env)) {
-        return jsonResponse({ error: "invalid_password" }, 401, this.env);
-      }
+      const authResponse = await this.requireAdminAuth(request, body);
+      if (authResponse) return authResponse;
       return this.recordApiResponse(
         jsonResponse({ usage: publicUsageStats(await this.readUsageStats()) }, 200, this.env)
       );
     }
 
     if (isProtectedContentPath(url)) {
-      const authResponse = await requireAuth(request, this.env);
+      const authResponse = await this.requireActiveAuth(request);
       if (authResponse) return authResponse;
     }
 
@@ -2990,7 +3423,7 @@ export default {
 
     if (request.method === "GET" && url.pathname.startsWith("/api/board/media/")) {
       if (!isAllowedOrigin(request, env)) return originNotAllowedResponse(env);
-      const authResponse = await requireAuth(request, env);
+      const authResponse = await requireActiveStoredAuth(request, env);
       if (authResponse) return authResponse;
       return handleBoardMedia(request, env, url);
     }
@@ -3007,9 +3440,22 @@ export default {
         expiresInSeconds: Math.floor(EMAIL_OTP_TTL_MS / 1000),
       }, 200, env);
     }
+    if (url.pathname === "/api/signup/status" && request.method === "GET") {
+      const sender = String(env.OTP_EMAIL_FROM || "").trim().toLowerCase();
+      return jsonResponse({
+        enabled: isMemberRegistrationConfigured(env),
+        expiresInSeconds: Math.floor(EMAIL_OTP_TTL_MS / 1000),
+        senderSetupRequired: !sender || sender.includes("onboarding@resend.dev"),
+      }, 200, env);
+    }
     if (
       request.method === "POST"
-      && (url.pathname === "/api/login/email/request" || url.pathname === "/api/login/email/verify")
+      && (
+        url.pathname === "/api/login/email/request"
+        || url.pathname === "/api/login/email/verify"
+        || url.pathname === "/api/signup/email/request"
+        || url.pathname === "/api/signup/email/verify"
+      )
     ) {
       if (!env.BOARD_STORE) {
         return jsonResponse({ error: "email_login_storage_not_configured" }, 503, env);
@@ -3040,7 +3486,9 @@ export default {
       return handleLogout(env);
     }
     if (url.pathname === "/api/session" && request.method === "GET") {
-      return handleSession(request, env);
+      if (!env.BOARD_STORE) return handleSession(request, env);
+      const id = env.BOARD_STORE.idFromName("free-board");
+      return env.BOARD_STORE.get(id).fetch(request);
     }
     if (url.pathname === "/api/admin/verify" && request.method === "POST") {
       const body = await parseJsonOrPlainPasswordBody(request);
@@ -3058,8 +3506,13 @@ export default {
       const id = env.BOARD_STORE.idFromName("free-board");
       return env.BOARD_STORE.get(id).fetch(request);
     }
+    if (url.pathname.startsWith("/api/admin/members") && request.method === "POST") {
+      if (!env.BOARD_STORE) return jsonResponse({ error: "member_storage_not_configured" }, 503, env);
+      const id = env.BOARD_STORE.idFromName("free-board");
+      return env.BOARD_STORE.get(id).fetch(request);
+    }
     if (isProtectedContentPath(url)) {
-      const authResponse = await requireAuth(request, env);
+      const authResponse = await requireActiveStoredAuth(request, env);
       if (authResponse) return authResponse;
     }
     if (url.pathname === "/api/screen-settings") {

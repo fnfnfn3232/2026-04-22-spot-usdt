@@ -33,7 +33,10 @@ The current frontend is wired to use this API when `window.SERVER_AUTH_API_BASE`
 - `OTP_EMAIL_TO_2`
   - Optional second private destination address. Only these registered addresses can request a code.
 - `OTP_EMAIL_FROM`
-  - Optional sender. The default deployment uses `코마캡 <onboarding@resend.dev>`.
+  - Verified sender for member signup mail, for example `코마캡 <login@your-domain.example>`.
+  - Resend's `onboarding@resend.dev` test sender can only send to the account owner, so member signup stays hidden until this uses a verified domain.
+- `MEMBER_REGISTRATION_ENABLED`
+  - Optional. Set to `false` to hide and disable new signup requests without deleting existing members.
 - `NEWS_LIMIT`
   - Optional. Coinness currently accepts up to 40 per fetch; keep this at `40`.
 - `NEWS_STORE_LIMIT`
@@ -112,6 +115,7 @@ Add these GitHub repository secrets:
 - `RESEND_API_KEY_2` (optional key for the second destination when using the default Resend test sender)
 - `OTP_EMAIL_TO` (optional, required for email code login)
 - `OTP_EMAIL_TO_2` (optional second permitted email address)
+- `OTP_EMAIL_FROM` (required for member signup; use a Resend-verified sender domain)
 
 The deploy workflow also creates/uses the private R2 bucket named `coin-board-media`. The Cloudflare API token needs permission to deploy Workers and manage/read/write R2 buckets.
 

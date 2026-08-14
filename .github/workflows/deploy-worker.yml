@@ -31,7 +31,7 @@ jobs:
           NEWS_LIMIT = "40"
           NEWS_STORE_LIMIT = "1000"
           NEWS_CACHE_SECONDS = "600"
-          OTP_EMAIL_FROM = "코마캡 <onboarding@resend.dev>"
+          MEMBER_REGISTRATION_ENABLED = "true"
 
           [[durable_objects.bindings]]
           name = "BOARD_STORE"
@@ -64,6 +64,7 @@ jobs:
           RESEND_API_KEY_2: ${{ secrets.RESEND_API_KEY_2 }}
           OTP_EMAIL_TO: ${{ secrets.OTP_EMAIL_TO }}
           OTP_EMAIL_TO_2: ${{ secrets.OTP_EMAIL_TO_2 }}
+          OTP_EMAIL_FROM: ${{ secrets.OTP_EMAIL_FROM }}
         run: |
           if [ -n "$RESEND_API_KEY" ] && [ -n "$OTP_EMAIL_TO" ]; then
             printf '%s' "$RESEND_API_KEY" | npx --yes wrangler@3 secret put RESEND_API_KEY
@@ -73,6 +74,9 @@ jobs:
             fi
             if [ -n "$OTP_EMAIL_TO_2" ]; then
               printf '%s' "$OTP_EMAIL_TO_2" | npx --yes wrangler@3 secret put OTP_EMAIL_TO_2
+            fi
+            if [ -n "$OTP_EMAIL_FROM" ]; then
+              printf '%s' "$OTP_EMAIL_FROM" | npx --yes wrangler@3 secret put OTP_EMAIL_FROM
             fi
           else
             echo "Email login secrets are not configured; password login remains enabled."

@@ -156,6 +156,21 @@
       color: #b4232f;
     }
 
+    .lock-signup-toggle {
+      width: 100%;
+      margin-top: 12px;
+      border-color: rgba(151, 183, 198, 0.24);
+      background: transparent;
+      color: var(--muted);
+    }
+
+    .lock-signup-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
     .lock-caps-warning {
       display: inline-flex;
       align-items: center;
@@ -576,6 +591,72 @@
 
     .admin-row span:last-child {
       overflow-wrap: anywhere;
+    }
+
+    .admin-members-section {
+      grid-column: 1 / -1;
+    }
+
+    .admin-members-list {
+      display: grid;
+      gap: 0;
+    }
+
+    .admin-member-row {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(151, 183, 198, 0.14);
+    }
+
+    .admin-member-row:last-child {
+      border-bottom: 0;
+    }
+
+    .admin-member-email {
+      color: #eaf7fc;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+
+    .admin-member-meta {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .admin-member-status {
+      min-width: 64px;
+      color: #9fd9ec;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .admin-member-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    .admin-member-actions button {
+      min-height: 34px;
+      padding: 7px 10px;
+      font-size: 12px;
+    }
+
+    .admin-member-actions .is-danger {
+      border-color: rgba(255, 99, 99, 0.32);
+      color: #ff9a9a;
+    }
+
+    .admin-members-message {
+      min-height: 18px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
     }
 
     .admin-error {
@@ -6107,6 +6188,16 @@
           top: 134px;
         }
       }
+    @media (max-width: 720px) {
+      .admin-member-row {
+        grid-template-columns: 1fr auto;
+      }
+
+      .admin-member-actions {
+        grid-column: 1 / -1;
+        justify-content: flex-start;
+      }
+    }
     </style>
   </head>
   <body>
@@ -6322,6 +6413,19 @@
         </form>
         <div class="lock-email-status" id="lockEmailStatus" aria-live="polite"></div>
       </div>
+      <button class="lock-signup-toggle hidden" id="lockSignupToggleBtn" type="button">회원가입 신청</button>
+      <div class="lock-email hidden" id="lockSignupPanel">
+        <p class="lock-signup-note">이메일 확인 후 관리자가 승인해야 로그인할 수 있습니다.</p>
+        <div class="lock-email-request-row">
+          <input class="lock-email-address" id="lockSignupEmailInput" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="가입할 이메일" />
+          <button id="lockSignupRequestBtn" type="button">인증번호 받기</button>
+        </div>
+        <form class="lock-email-verify" id="lockSignupVerifyForm" hidden>
+          <input id="lockSignupCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="6자리 인증번호" />
+          <button id="lockSignupVerifyBtn" type="submit">가입 신청</button>
+        </form>
+        <div class="lock-email-status" id="lockSignupStatus" aria-live="polite"></div>
+      </div>
       <div class="lock-error" id="lockError"></div>
     </section>
   </div>
@@ -6421,6 +6525,11 @@
           <section class="admin-section">
             <h3 class="admin-section-title">서버/호스팅</h3>
             <div class="admin-list" id="adminServerStats"></div>
+          </section>
+          <section class="admin-section admin-members-section">
+            <h3 class="admin-section-title">회원 관리</h3>
+            <div class="admin-members-list" id="adminMembersList"></div>
+            <div class="admin-members-message" id="adminMembersMessage" aria-live="polite"></div>
           </section>
           <section class="admin-section admin-screen-settings-section">
             <h3 class="admin-section-title">화면 편집</h3>
@@ -6863,6 +6972,14 @@
       const lockEmailCodeInput = document.getElementById("lockEmailCodeInput");
       const lockEmailVerifyBtn = document.getElementById("lockEmailVerifyBtn");
       const lockEmailStatus = document.getElementById("lockEmailStatus");
+      const lockSignupToggleBtn = document.getElementById("lockSignupToggleBtn");
+      const lockSignupPanel = document.getElementById("lockSignupPanel");
+      const lockSignupEmailInput = document.getElementById("lockSignupEmailInput");
+      const lockSignupRequestBtn = document.getElementById("lockSignupRequestBtn");
+      const lockSignupVerifyForm = document.getElementById("lockSignupVerifyForm");
+      const lockSignupCodeInput = document.getElementById("lockSignupCodeInput");
+      const lockSignupVerifyBtn = document.getElementById("lockSignupVerifyBtn");
+      const lockSignupStatus = document.getElementById("lockSignupStatus");
       const adminLaunchBtn = document.getElementById("adminLaunchBtn");
       const adminModal = document.getElementById("adminModal");
       const adminAuthPanel = document.getElementById("adminAuthPanel");
@@ -6888,6 +7005,8 @@
       const adminBoardStats = document.getElementById("adminBoardStats");
       const adminClientStats = document.getElementById("adminClientStats");
       const adminServerStats = document.getElementById("adminServerStats");
+      const adminMembersList = document.getElementById("adminMembersList");
+      const adminMembersMessage = document.getElementById("adminMembersMessage");
       const adminRefreshBtn = document.getElementById("adminRefreshBtn");
       const adminCloseBtn = document.getElementById("adminCloseBtn");
       const adminAuthCloseBtn = document.getElementById("adminAuthCloseBtn");
@@ -7353,6 +7472,11 @@
       let emailOtpExpiresAt = 0;
       let emailOtpMaskedEmail = "";
       let emailOtpTimerId = 0;
+      let signupStatusPromise = null;
+      let signupOtpRequestId = "";
+      let signupOtpExpiresAt = 0;
+      let signupOtpMaskedEmail = "";
+      let signupOtpTimerId = 0;
 
       function setEmailLoginStatus(message, isError = false) {
         lockEmailStatus.textContent = String(message || "");
@@ -7437,6 +7561,91 @@
         return emailLoginStatusPromise;
       }
 
+      function setSignupStatus(message, isError = false) {
+        lockSignupStatus.textContent = String(message || "");
+        lockSignupStatus.classList.toggle("is-error", Boolean(isError));
+      }
+
+      function stopSignupOtpTimer() {
+        if (signupOtpTimerId) {
+          window.clearInterval(signupOtpTimerId);
+          signupOtpTimerId = 0;
+        }
+      }
+
+      function renderSignupOtpCountdown() {
+        const remainingSeconds = Math.max(0, Math.ceil((signupOtpExpiresAt - Date.now()) / 1000));
+        if (remainingSeconds <= 0) {
+          stopSignupOtpTimer();
+          lockSignupVerifyBtn.disabled = true;
+          lockSignupCodeInput.disabled = true;
+          lockSignupEmailInput.disabled = false;
+          lockSignupRequestBtn.disabled = false;
+          lockSignupRequestBtn.textContent = "인증번호 다시 받기";
+          if (signupOtpRequestId) setSignupStatus("인증번호가 만료되었습니다. 새 번호를 받아 주세요.", true);
+          return;
+        }
+        lockSignupVerifyBtn.disabled = false;
+        lockSignupCodeInput.disabled = false;
+        lockSignupEmailInput.disabled = true;
+        lockSignupRequestBtn.disabled = true;
+        const destination = signupOtpMaskedEmail ? `${signupOtpMaskedEmail}으로 ` : "";
+        setSignupStatus(`${destination}인증번호를 보냈습니다. ${remainingSeconds}초 안에 입력해 주세요.`);
+      }
+
+      function startSignupOtpTimer() {
+        stopSignupOtpTimer();
+        renderSignupOtpCountdown();
+        signupOtpTimerId = window.setInterval(renderSignupOtpCountdown, 250);
+      }
+
+      function resetSignupForm({ keepMessage = false } = {}) {
+        stopSignupOtpTimer();
+        signupOtpRequestId = "";
+        signupOtpExpiresAt = 0;
+        signupOtpMaskedEmail = "";
+        lockSignupEmailInput.value = "";
+        lockSignupEmailInput.disabled = false;
+        lockSignupCodeInput.value = "";
+        lockSignupCodeInput.disabled = false;
+        lockSignupVerifyBtn.disabled = false;
+        lockSignupVerifyForm.hidden = true;
+        lockSignupRequestBtn.disabled = false;
+        lockSignupRequestBtn.textContent = "인증번호 받기";
+        lockSignupPanel.classList.add("hidden");
+        lockSignupToggleBtn.textContent = "회원가입 신청";
+        if (!keepMessage) setSignupStatus("");
+      }
+
+      async function refreshSignupAvailability(force = false) {
+        if (!hasServerAuth() || isLocalPreview()) {
+          lockSignupToggleBtn.classList.add("hidden");
+          lockSignupPanel.classList.add("hidden");
+          return false;
+        }
+        if (signupStatusPromise && !force) return signupStatusPromise;
+        signupStatusPromise = fetchServerAuth("/api/signup/status", {
+          method: "GET",
+          timeoutMs: 5000,
+        })
+          .then((payload) => {
+            const enabled = Boolean(payload?.enabled);
+            lockSignupToggleBtn.classList.toggle("hidden", !enabled);
+            if (!enabled) lockSignupPanel.classList.add("hidden");
+            return enabled;
+          })
+          .catch((error) => {
+            console.error("signup_status_failed", error);
+            lockSignupToggleBtn.classList.add("hidden");
+            lockSignupPanel.classList.add("hidden");
+            return false;
+          })
+          .finally(() => {
+            signupStatusPromise = null;
+          });
+        return signupStatusPromise;
+      }
+
       function getEmailLoginErrorMessage(error) {
         const message = String(error?.message || "");
         const retryAfter = Math.max(1, Math.ceil(Number(error?.payload?.retryAfterSeconds) || 0));
@@ -7453,6 +7662,14 @@
         return "이메일 인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
       }
 
+      function getSignupErrorMessage(error) {
+        const message = String(error?.message || "");
+        if (message === "member_account_already_exists") return "이 이메일은 이미 로그인 가능한 주소입니다.";
+        if (message === "member_registration_not_configured") return "현재 회원가입 신청을 사용할 수 없습니다.";
+        if (message === "member_not_approved") return "아직 관리자 승인이 완료되지 않았습니다.";
+        return getEmailLoginErrorMessage(error);
+      }
+
       function completeSiteLogin() {
         siteAuthConfirmed = true;
         setLockExtendCount(0);
@@ -7460,6 +7677,7 @@
         renderLockTtl();
         lockPasswordInput.value = "";
         resetEmailLoginForm();
+        resetSignupForm();
         scheduleMarketChart();
         requestServerScreenSettingsRefresh({ selectDefault: true });
         if (state.viewMode === "board") {
@@ -7775,6 +7993,8 @@
       let serverUsageStats = null;
       let serverUsageError = "";
       let adminTrafficRange = "hours";
+      let adminMembers = [];
+      let adminMembersLoading = false;
 
       function showFreeBoardMessage(message, isError = false) {
         freeBoardMessage = String(message || "");
@@ -10828,6 +11048,105 @@
         return serverUsageStats;
       }
 
+      function setAdminMembersMessage(message, isError = false) {
+        if (!adminMembersMessage) return;
+        adminMembersMessage.textContent = String(message || "");
+        adminMembersMessage.classList.toggle("is-error", Boolean(isError));
+      }
+
+      function getMemberStatusLabel(status) {
+        return ({
+          pending: "승인 대기",
+          active: "승인됨",
+          rejected: "거절됨",
+          revoked: "차단됨",
+        })[String(status || "")] || "확인 필요";
+      }
+
+      function getMemberActionButtons(member) {
+        const status = String(member?.status || "pending");
+        const actions = [];
+        if (status === "pending") actions.push(["approve", "승인"], ["reject", "거절", true]);
+        if (status === "active") actions.push(["revoke", "로그인 차단", true]);
+        if (status === "rejected") actions.push(["approve", "승인"]);
+        if (status === "revoked") actions.push(["restore", "차단 해제"]);
+        actions.push(["delete", "기록 삭제", true]);
+        return actions.map(([action, label, danger]) => (
+          `<button type="button"${danger ? ' class="is-danger"' : ""} data-member-action="${action}" data-member-id="${escapeAttr(member.id)}">${label}</button>`
+        )).join("");
+      }
+
+      function renderAdminMembers() {
+        if (!adminMembersList) return;
+        if (adminMembersLoading) {
+          adminMembersList.innerHTML = '<div class="admin-traffic-empty">회원 목록을 불러오는 중입니다.</div>';
+          return;
+        }
+        if (!adminMembers.length) {
+          adminMembersList.innerHTML = '<div class="admin-traffic-empty">아직 회원가입 신청이 없습니다.</div>';
+          return;
+        }
+        adminMembersList.innerHTML = adminMembers.map((member) => {
+          const requestedAt = formatLocalDateTimeMs(member.requestedAt);
+          const lastLogin = Number(member.lastLoginAt) > 0 ? ` · 최근 로그인 ${formatLocalDateTimeMs(member.lastLoginAt)}` : "";
+          return `
+            <div class="admin-member-row">
+              <div>
+                <div class="admin-member-email">${escapeHtml(member.email)}</div>
+                <div class="admin-member-meta">신청 ${escapeHtml(requestedAt)}${escapeHtml(lastLogin)}</div>
+              </div>
+              <div class="admin-member-status">${escapeHtml(getMemberStatusLabel(member.status))}</div>
+              <div class="admin-member-actions">${getMemberActionButtons(member)}</div>
+            </div>`;
+        }).join("");
+      }
+
+      async function fetchAdminMembers(password = adminServerPassword) {
+        if (!hasServerAuth()) {
+          adminMembers = [];
+          renderAdminMembers();
+          return adminMembers;
+        }
+        adminMembersLoading = true;
+        setAdminMembersMessage("");
+        renderAdminMembers();
+        try {
+          const payload = await fetchServerAuth("/api/admin/members/list", {
+            method: "POST",
+            timeoutMs: 10000,
+            body: JSON.stringify(password ? { adminPassword: password } : {}),
+          });
+          adminMembers = Array.isArray(payload?.members) ? payload.members : [];
+          return adminMembers;
+        } catch (error) {
+          setAdminMembersMessage("회원 목록을 불러오지 못했습니다.", true);
+          throw error;
+        } finally {
+          adminMembersLoading = false;
+          renderAdminMembers();
+        }
+      }
+
+      async function updateAdminMember(action, memberId) {
+        if (!adminServerPassword) throw new Error("auth_required");
+        adminMembersLoading = true;
+        setAdminMembersMessage("처리 중입니다...");
+        renderAdminMembers();
+        try {
+          const payload = await fetchServerAuth(`/api/admin/members/${encodeURIComponent(action)}`, {
+            method: "POST",
+            timeoutMs: 10000,
+            body: JSON.stringify({ adminPassword: adminServerPassword, memberId }),
+          });
+          adminMembers = Array.isArray(payload?.members) ? payload.members : [];
+          const emailNote = payload?.emailSent === false ? " 상태는 저장됐지만 안내 이메일은 보내지 못했습니다." : "";
+          setAdminMembersMessage(`회원 상태를 변경했습니다.${emailNote}`, payload?.emailSent === false);
+        } finally {
+          adminMembersLoading = false;
+          renderAdminMembers();
+        }
+      }
+
       async function fetchServerUsageStatsWithPassword(password) {
         if (!hasServerAuth()) return null;
         const supportsAbortController = typeof AbortController === "function";
@@ -11051,6 +11370,10 @@
         adminPasswordInput.value = "";
         adminError.textContent = "";
         adminServerPassword = "";
+        adminMembers = [];
+        adminMembersLoading = false;
+        setAdminMembersMessage("");
+        renderAdminMembers();
         setAdminCapsWarning(false);
       }
 
@@ -11167,6 +11490,7 @@
               console.error(renderError);
             }
           });
+        fetchAdminMembers(adminServerPassword).catch((error) => console.error(error));
       }
 
       function showSiteLock() {
@@ -11176,7 +11500,9 @@
         lockError.textContent = "";
         setLockCapsWarning(false);
         resetEmailLoginForm();
+        resetSignupForm();
         refreshEmailLoginAvailability();
+        refreshSignupAvailability();
         window.setTimeout(() => lockPasswordInput.focus(), 0);
       }
 
@@ -11185,6 +11511,7 @@
         siteLock.classList.add("hidden");
         setLockCapsWarning(false);
         stopEmailOtpTimer();
+        stopSignupOtpTimer();
       }
 
       function getLockAuthUntil() {
@@ -11453,6 +11780,111 @@
         lockEmailCodeInput.value = String(lockEmailCodeInput.value || "").replace(/\D/g, "").slice(0, 6);
       });
 
+      lockSignupToggleBtn.addEventListener("click", () => {
+        const willOpen = lockSignupPanel.classList.contains("hidden");
+        lockSignupPanel.classList.toggle("hidden", !willOpen);
+        lockSignupToggleBtn.textContent = willOpen ? "회원가입 닫기" : "회원가입 신청";
+        if (willOpen) {
+          setSignupStatus("가입할 이메일 주소를 입력해 주세요.");
+          window.setTimeout(() => lockSignupEmailInput.focus(), 0);
+        } else {
+          resetSignupForm();
+        }
+      });
+
+      lockSignupRequestBtn.addEventListener("click", async () => {
+        const email = String(lockSignupEmailInput.value || "").trim().toLowerCase();
+        lockSignupEmailInput.value = email;
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          setSignupStatus("가입할 이메일 주소를 정확히 입력해 주세요.", true);
+          lockSignupEmailInput.focus();
+          return;
+        }
+        lockSignupEmailInput.disabled = true;
+        lockSignupRequestBtn.disabled = true;
+        lockSignupRequestBtn.textContent = "전송 중";
+        lockSignupVerifyForm.hidden = true;
+        setSignupStatus("인증번호를 보내는 중입니다...");
+        try {
+          const payload = await fetchServerAuth("/api/signup/email/request", {
+            method: "POST",
+            timeoutMs: 10000,
+            body: JSON.stringify({ email }),
+          });
+          signupOtpRequestId = String(payload?.requestId || "");
+          signupOtpExpiresAt = Number(payload?.expiresAt) || (Date.now() + 60 * 1000);
+          signupOtpMaskedEmail = String(payload?.maskedEmail || "");
+          lockSignupCodeInput.value = "";
+          lockSignupVerifyForm.hidden = false;
+          startSignupOtpTimer();
+          window.setTimeout(() => lockSignupCodeInput.focus(), 0);
+        } catch (error) {
+          lockSignupEmailInput.disabled = false;
+          lockSignupRequestBtn.disabled = false;
+          lockSignupRequestBtn.textContent = "인증번호 받기";
+          setSignupStatus(getSignupErrorMessage(error), true);
+        }
+      });
+
+      lockSignupVerifyForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const code = String(lockSignupCodeInput.value || "").replace(/\D/g, "").slice(0, 6);
+        lockSignupCodeInput.value = code;
+        if (!signupOtpRequestId || signupOtpExpiresAt <= Date.now()) {
+          setSignupStatus("인증번호가 만료되었습니다. 새 번호를 받아 주세요.", true);
+          renderSignupOtpCountdown();
+          return;
+        }
+        if (!/^\d{6}$/.test(code)) {
+          setSignupStatus("6자리 숫자를 입력해 주세요.", true);
+          lockSignupCodeInput.focus();
+          return;
+        }
+
+        lockSignupVerifyBtn.disabled = true;
+        setSignupStatus("이메일을 확인하는 중입니다...");
+        try {
+          const payload = await fetchServerAuth("/api/signup/email/verify", {
+            method: "POST",
+            timeoutMs: 10000,
+            body: JSON.stringify({ requestId: signupOtpRequestId, code }),
+          });
+          stopSignupOtpTimer();
+          signupOtpRequestId = "";
+          signupOtpExpiresAt = 0;
+          lockSignupVerifyForm.hidden = true;
+          lockSignupEmailInput.disabled = true;
+          lockSignupRequestBtn.disabled = true;
+          if (payload?.status === "owner") {
+            setSignupStatus("관리자 이메일입니다. 위 이메일 로그인에서 코드를 받아 로그인해 주세요.");
+          } else if (payload?.status === "active") {
+            setSignupStatus("이미 승인된 회원입니다. 위 이메일 로그인에서 코드를 받아 로그인해 주세요.");
+          } else if (payload?.status === "revoked") {
+            setSignupStatus("현재 로그인이 차단된 회원입니다. 관리자에게 문의해 주세요.", true);
+          } else {
+            setSignupStatus("이메일 확인이 완료됐습니다. 관리자가 승인하면 로그인할 수 있습니다.");
+          }
+        } catch (error) {
+          const message = String(error?.message || "");
+          if (message === "email_otp_expired" || message === "email_otp_attempts_exceeded") {
+            signupOtpExpiresAt = 0;
+            stopSignupOtpTimer();
+            lockSignupEmailInput.disabled = false;
+            lockSignupRequestBtn.disabled = false;
+            lockSignupRequestBtn.textContent = "인증번호 다시 받기";
+          }
+          setSignupStatus(getSignupErrorMessage(error), true);
+          lockSignupCodeInput.value = "";
+          lockSignupCodeInput.focus();
+        } finally {
+          if (signupOtpExpiresAt > Date.now()) lockSignupVerifyBtn.disabled = false;
+        }
+      });
+
+      lockSignupCodeInput.addEventListener("input", () => {
+        lockSignupCodeInput.value = String(lockSignupCodeInput.value || "").replace(/\D/g, "").slice(0, 6);
+      });
+
       adminLaunchBtn.addEventListener("click", showAdminModal);
       adminAuthCloseBtn.addEventListener("click", closeAdminModal);
       adminCancelBtn.addEventListener("click", closeAdminModal);
@@ -11467,13 +11899,34 @@
       });
       adminRefreshBtn.addEventListener("click", () => {
         renderAdminDashboard();
-        fetchServerUsageStats(adminServerPassword)
+        Promise.all([
+          fetchServerUsageStats(adminServerPassword),
+          fetchAdminMembers(adminServerPassword),
+        ])
           .then(() => renderAdminDashboard())
           .catch((error) => {
             console.error(error);
-            serverUsageError = "서버 트래픽 추정치를 불러오지 못했습니다.";
+            serverUsageError = "서버 통계 또는 회원 목록을 불러오지 못했습니다.";
             renderAdminDashboard();
           });
+      });
+      adminMembersList?.addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-member-action]");
+        if (!button || !adminMembersList.contains(button) || adminMembersLoading) return;
+        const action = String(button.dataset.memberAction || "");
+        const memberId = String(button.dataset.memberId || "");
+        const member = adminMembers.find((item) => item.id === memberId);
+        if (!member || !["approve", "restore", "reject", "revoke", "delete"].includes(action)) return;
+        if (["reject", "revoke", "delete"].includes(action)) {
+          const label = action === "delete" ? "기록을 완전히 삭제" : (action === "revoke" ? "로그인을 차단" : "가입을 거절");
+          if (!window.confirm(`${member.email} 회원의 ${label}할까요?`)) return;
+        }
+        try {
+          await updateAdminMember(action, memberId);
+        } catch (error) {
+          console.error(error);
+          setAdminMembersMessage("회원 상태를 변경하지 못했습니다. 관리자 비밀번호를 다시 확인해 주세요.", true);
+        }
       });
       adminModal.addEventListener("click", (event) => {
         if (event.target === adminModal) {
