@@ -63,7 +63,8 @@ const EMAIL_OTP_GLOBAL_HOURLY_LIMIT = 10;
 const EMAIL_OTP_VERIFY_LIMIT = 5;
 const MEMBER_PASSWORD_MIN_LENGTH = 10;
 const MEMBER_PASSWORD_MAX_LENGTH = 72;
-const MEMBER_PASSWORD_ITERATIONS = 210000;
+const MEMBER_PASSWORD_LEGACY_ITERATIONS = 210000;
+const MEMBER_PASSWORD_ITERATIONS = 600000;
 const MEMBER_PASSWORD_RESET_TTL_MS = 10 * 60 * 1000;
 const MEMBER_SIGNUP_COOLDOWN_MS = 60 * 1000;
 const MEMBER_SIGNUP_HOURLY_LIMIT = 5;
@@ -468,9 +469,11 @@ async function deriveMemberPasswordHash(password, saltHex, iterations = MEMBER_P
   return bytesToHex(bits);
 }
 
-async function createMemberPasswordCredentials(password) {
-  const error = getMemberPasswordError(password);
-  if (error) throw new Error(error);
+async function createMemberPasswordCredentials(password, { validate = true } = {}) {
+  if (validate) {
+    const error = getMemberPasswordError(password);
+    if (error) throw new Error(error);
+  }
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const passwordSalt = bytesToHex(salt);
   return {
@@ -673,7 +676,7 @@ function normalizeMemberRecord(raw) {
     emailHash: String(raw.emailHash || ""),
     passwordSalt: String(raw.passwordSalt || ""),
     passwordHash: String(raw.passwordHash || ""),
-    passwordIterations: Math.max(100000, Math.floor(Number(raw.passwordIterations) || MEMBER_PASSWORD_ITERATIONS)),
+    passwordIterations: Math.max(100000, Math.floor(Number(raw.passwordIterations) || MEMBER_PASSWORD_LEGACY_ITERATIONS)),
     authVersion: Math.max(1, Math.floor(Number(raw.authVersion) || 1)),
     status: normalizeMemberStatus(raw.status),
     requestedAt: Math.max(0, Math.floor(Number(raw.requestedAt) || 0)),
@@ -3290,6 +3293,9 @@ export class BoardStore {
     }
 
     await this.state.storage.delete(attemptKey);
+    if (member.passwordIterations < MEMBER_PASSWORD_ITERATIONS) {
+      Object.assign(member, await createMemberPasswordCredentials(password, { validate: false }));
+    }
     member.lastLoginAt = now;
     member.updatedAt = now;
     await this.writeMembers(members);
