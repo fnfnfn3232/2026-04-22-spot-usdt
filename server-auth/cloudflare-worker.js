@@ -691,6 +691,8 @@ function normalizeMemberRecord(raw) {
     passwordIterations: Math.max(100000, Math.floor(Number(raw.passwordIterations) || MEMBER_PASSWORD_LEGACY_ITERATIONS)),
     authVersion: Math.max(1, Math.floor(Number(raw.authVersion) || 1)),
     status: normalizeMemberStatus(raw.status),
+    boardWriteApproved: raw.boardWriteApproved === true,
+    boardWriteApprovedAt: Math.max(0, Math.floor(Number(raw.boardWriteApprovedAt) || 0)),
     requestedAt: Math.max(0, Math.floor(Number(raw.requestedAt) || 0)),
     emailVerifiedAt: Math.max(0, Math.floor(Number(raw.emailVerifiedAt) || 0)),
     approvedAt: Math.max(0, Math.floor(Number(raw.approvedAt) || 0)),
@@ -781,6 +783,8 @@ function sessionPayload(token, claims = null) {
     token,
     expiresAt: Number.isFinite(expiresAt) ? expiresAt : 0,
     role: claims?.role === "member" ? "member" : "admin",
+    subject: claims?.role === "member" ? String(claims.subject || "") : "owner",
+    boardWriteApproved: claims?.role !== "member" || claims?.boardWriteApproved === true,
   };
 }
 
@@ -974,6 +978,9 @@ function normalizeBoardComment(raw, fallback = {}) {
   if (!body) return null;
   return {
     id: cleanBoardText(raw?.id || fallback.id || `comment-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`, 80),
+    authorMemberId: /^[0-9a-f-]{36}$/i.test(String(raw?.authorMemberId || fallback.authorMemberId || ""))
+      ? String(raw?.authorMemberId || fallback.authorMemberId)
+      : "",
     author: cleanBoardText(raw?.author || "익명", 40) || "익명",
     body,
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
@@ -1002,6 +1009,9 @@ function normalizeBoardPost(raw, fallback = {}) {
     : [];
   return {
     id: cleanBoardText(raw?.id || fallback.id || `post-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`, 80),
+    authorMemberId: /^[0-9a-f-]{36}$/i.test(String(raw?.authorMemberId || fallback.authorMemberId || ""))
+      ? String(raw?.authorMemberId || fallback.authorMemberId)
+      : "",
     category: normalizeBoardCategory(raw?.category),
     title,
     author: cleanBoardText(raw?.author || "익명", 40) || "익명",
@@ -1285,6 +1295,23 @@ async function requireActiveStoredAuth(request, env) {
   return response.ok ? null : jsonResponse({ error: "auth_required" }, 401, env);
 }
 
+async function requireBoardWriteStoredAuth(request, env) {
+  const claims = await getRequestSessionClaims(request, env);
+  if (!claims) return jsonResponse({ error: "auth_required" }, 401, env);
+  if (claims.role === "admin") return null;
+  if (!env.BOARD_STORE) return jsonResponse({ error: "board_write_approval_required" }, 403, env);
+  const id = env.BOARD_STORE.idFromName("free-board");
+  const response = await env.BOARD_STORE.get(id).fetch(new Request("https://board-store/api/session/check", {
+    method: "GET",
+    headers: request.headers,
+  }));
+  if (!response.ok) return jsonResponse({ error: "auth_required" }, 401, env);
+  const payload = await response.json().catch(() => null);
+  return payload?.role === "admin" || payload?.boardWriteApproved === true
+    ? null
+    : jsonResponse({ error: "board_write_approval_required" }, 403, env);
+}
+
 function base64UrlToBytes(value) {
   const normalized = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
@@ -1485,6 +1512,18 @@ async function canManagePost(post, body, env) {
 async function canManageComment(comment, body, env) {
   if (await isAdminPassword(body?.adminPassword || "", env)) return true;
   return isMatchingPassword(body?.commentPassword || body?.password || "", comment?.passwordHash || "");
+}
+
+async function canManagePostForClaims(post, body, claims, env) {
+  if (claims?.role === "admin") return true;
+  if (claims?.role === "member" && post?.authorMemberId === claims.subject) return true;
+  return canManagePost(post, body, env);
+}
+
+async function canManageCommentForClaims(comment, body, claims, env) {
+  if (claims?.role === "admin") return true;
+  if (claims?.role === "member" && comment?.authorMemberId === claims.subject) return true;
+  return canManageComment(comment, body, env);
 }
 
 function jsonRequestWithoutPassword(request, body) {
@@ -2144,9 +2183,21 @@ export class BoardStore {
   async getActiveSessionClaims(request) {
     const claims = await getRequestSessionClaims(request, this.env);
     if (!claims) return null;
-    if (claims.role === "admin") return claims;
+    if (claims.role === "admin") return { ...claims, boardWriteApproved: true };
     const member = (await this.readMembers()).find((item) => item.id === claims.subject);
-    return member?.status === "active" && member.authVersion === claims.authVersion ? claims : null;
+    return member?.status === "active" && member.authVersion === claims.authVersion
+      ? { ...claims, boardWriteApproved: member.boardWriteApproved === true }
+      : null;
+  }
+
+  async getBoardWriteClaims(request) {
+    const claims = await this.getActiveSessionClaims(request);
+    if (!claims) return { claims: null, response: jsonResponse({ error: "auth_required" }, 401, this.env) };
+    if (claims.role === "admin" || claims.boardWriteApproved === true) return { claims, response: null };
+    return {
+      claims,
+      response: jsonResponse({ error: "board_write_approval_required" }, 403, this.env),
+    };
   }
 
   async requireActiveAuth(request) {
@@ -2982,8 +3033,14 @@ export class BoardStore {
       member.updatedAt = Date.now();
       await this.writeMembers(members);
       record.authVersion = member.authVersion;
+      record.boardWriteApproved = member.boardWriteApproved === true;
     }
-    const claims = { role: record.role, subject: record.subject, authVersion: record.authVersion };
+    const claims = {
+      role: record.role,
+      subject: record.subject,
+      authVersion: record.authVersion,
+      boardWriteApproved: record.role === "admin" || record.boardWriteApproved === true,
+    };
     const token = await createSessionToken(this.env, claims);
     const headers = new Headers(jsonResponse({ ok: true }, 200, this.env).headers);
     appendSessionCookies(headers, token);
@@ -3311,7 +3368,12 @@ export class BoardStore {
     member.lastLoginAt = now;
     member.updatedAt = now;
     await this.writeMembers(members);
-    const claims = { role: "member", subject: member.id, authVersion: member.authVersion };
+    const claims = {
+      role: "member",
+      subject: member.id,
+      authVersion: member.authVersion,
+      boardWriteApproved: member.boardWriteApproved === true,
+    };
     const token = await createSessionToken(this.env, claims);
     const headers = new Headers(jsonResponse({ ok: true }, 200, this.env).headers);
     appendSessionCookies(headers, token);
@@ -3446,12 +3508,25 @@ export class BoardStore {
       member.approvedAt = now;
       member.rejectedAt = 0;
       member.revokedAt = 0;
+    } else if (action === "board-approve") {
+      if (member.status !== "active") {
+        return jsonResponse({ error: "member_not_active" }, 409, this.env);
+      }
+      member.boardWriteApproved = true;
+      member.boardWriteApprovedAt = now;
+    } else if (action === "board-revoke") {
+      member.boardWriteApproved = false;
+      member.boardWriteApprovedAt = 0;
     } else if (action === "reject") {
       member.status = "rejected";
       member.rejectedAt = now;
+      member.boardWriteApproved = false;
+      member.boardWriteApprovedAt = 0;
     } else if (action === "revoke") {
       member.status = "revoked";
       member.revokedAt = now;
+      member.boardWriteApproved = false;
+      member.boardWriteApprovedAt = 0;
     } else if (action === "delete") {
       members = members.filter((item) => item.id !== memberId);
       await this.writeMembers(members);
@@ -3461,7 +3536,9 @@ export class BoardStore {
     }
     member.updatedAt = now;
     await this.writeMembers(members);
-    const statusText = member.status === "active" ? "approved" : member.status;
+    const statusText = action === "board-approve"
+      ? "board posting approved"
+      : (action === "board-revoke" ? "board posting revoked" : (member.status === "active" ? "approved" : member.status));
     let emailSent = null;
     if (isMemberEmailDeliveryConfigured(this.env)) {
       emailSent = true;
@@ -3469,9 +3546,13 @@ export class BoardStore {
         await sendMemberEmail({
           recipient: member.email,
           subject: `ComaCap membership ${statusText}`,
-          text: member.status === "active"
-            ? "Your ComaCap membership has been approved. You can now log in with your email address and the password you chose during signup."
-            : `Your ComaCap membership status is now ${member.status}.`,
+          text: action === "board-approve"
+            ? "Your ComaCap board posting permission has been approved. You can now create posts and manage posts you own."
+            : (action === "board-revoke"
+              ? "Your ComaCap board posting permission has been revoked. Your site membership remains active for read-only access."
+              : (member.status === "active"
+                ? "Your ComaCap membership has been approved. You can now log in with your email address and the password you chose during signup. Board posting requires separate administrator approval."
+                : `Your ComaCap membership status is now ${member.status}.`)),
           idempotencyKey: `coin-member-${action}-${member.id}-${now}`,
         }, this.env);
       } catch (error) {
@@ -3517,7 +3598,7 @@ export class BoardStore {
     if (request.method === "GET" && url.pathname === "/api/session/check") {
       const claims = await this.getActiveSessionClaims(request);
       return claims
-        ? jsonResponse({ ok: true, role: claims.role }, 200, this.env)
+        ? jsonResponse({ ok: true, role: claims.role, boardWriteApproved: claims.boardWriteApproved === true }, 200, this.env)
         : jsonResponse({ error: "auth_required" }, 401, this.env);
     }
     if (request.method === "POST" && url.pathname.startsWith("/api/admin/members")) {
@@ -3599,6 +3680,18 @@ export class BoardStore {
       }
     }
 
+    if (
+      request.method === "POST"
+      && (
+        url.pathname === "/api/board/media"
+        || url.pathname === "/api/board/media/uploads"
+        || url.pathname.startsWith("/api/board/media/uploads/")
+      )
+    ) {
+      const access = await this.getBoardWriteClaims(request);
+      if (access.response) return access.response;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/board/media/uploads") {
       return this.createMediaUpload(request);
     }
@@ -3630,10 +3723,15 @@ export class BoardStore {
     }
 
     if (request.method === "POST" && url.pathname === "/api/board/posts") {
+      const access = await this.getBoardWriteClaims(request);
+      if (access.response) return access.response;
       const body = await parseJsonBody(request);
       const postPassword = cleanBoardText(body?.postPassword, 200);
       if (!postPassword) return jsonResponse({ error: "post_password_required" }, 400, this.env);
-      const post = normalizeBoardPost(body, {
+      const post = normalizeBoardPost({
+        ...body,
+        authorMemberId: access.claims?.role === "member" ? access.claims.subject : "",
+      }, {
         id: `post-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
         createdAt: Date.now(),
       });
@@ -3655,18 +3753,22 @@ export class BoardStore {
     }
 
     if (request.method === "POST" && postId && url.pathname.endsWith("/verify")) {
+      const access = await this.getBoardWriteClaims(request);
+      if (access.response) return access.response;
       const id = postId.replace(/\/verify$/, "");
       const body = await parseJsonBody(request);
       const posts = await this.readPosts();
       const target = posts.find((post) => post.id === id);
       if (!target) return jsonResponse({ error: "not_found" }, 404, this.env);
-      if (!await canManagePost(target, body, this.env)) {
+      if (!await canManagePostForClaims(target, body, access.claims, this.env)) {
         return jsonResponse({ error: "invalid_password" }, 401, this.env);
       }
       return jsonResponse({ ok: true }, 200, this.env);
     }
 
     if (request.method === "POST" && /^\/api\/board\/posts\/[^/]+\/comments$/.test(url.pathname)) {
+      const access = await this.getBoardWriteClaims(request);
+      if (access.response) return access.response;
       const id = decodeURIComponent(url.pathname.split("/")[4] || "");
       const body = await parseJsonBody(request);
       const commentPassword = cleanBoardText(body?.commentPassword, 200);
@@ -3674,7 +3776,10 @@ export class BoardStore {
       const posts = await this.readPosts();
       const target = posts.find((post) => post.id === id);
       if (!target) return jsonResponse({ error: "not_found" }, 404, this.env);
-      const comment = normalizeBoardComment(body, {
+      const comment = normalizeBoardComment({
+        ...body,
+        authorMemberId: access.claims?.role === "member" ? access.claims.subject : "",
+      }, {
         id: `comment-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
         createdAt: Date.now(),
       });
@@ -3688,6 +3793,8 @@ export class BoardStore {
     }
 
     if (request.method === "DELETE" && /^\/api\/board\/posts\/[^/]+\/comments\/[^/]+$/.test(url.pathname)) {
+      const access = await this.getBoardWriteClaims(request);
+      if (access.response) return access.response;
       const parts = url.pathname.split("/");
       const id = decodeURIComponent(parts[4] || "");
       const commentId = decodeURIComponent(parts[6] || "");
@@ -3698,7 +3805,7 @@ export class BoardStore {
       const comments = Array.isArray(target.comments) ? target.comments : [];
       const comment = comments.find((item) => item.id === commentId);
       if (!comment) return jsonResponse({ error: "not_found" }, 404, this.env);
-      if (!await canManageComment(comment, body, this.env)) {
+      if (!await canManageCommentForClaims(comment, body, access.claims, this.env)) {
         return jsonResponse({ error: "invalid_password" }, 401, this.env);
       }
       const adminMode = await isAdminPassword(body?.adminPassword || "", this.env);
@@ -3707,7 +3814,7 @@ export class BoardStore {
       const savedPosts = await this.writePosts(posts);
       await this.tryAddAdminLog({
         action: "comment_delete",
-        actor: adminMode ? "admin" : "comment_password",
+        actor: access.claims?.role === "admin" || adminMode ? "admin" : (comment.authorMemberId === access.claims?.subject ? "member" : "comment_password"),
         postId: target.id,
         title: target.title,
         category: target.category,
@@ -3719,11 +3826,13 @@ export class BoardStore {
     }
 
     if (request.method === "PUT" && postId) {
+      const access = await this.getBoardWriteClaims(request);
+      if (access.response) return access.response;
       const body = await parseJsonBody(request);
       const posts = await this.readPosts();
       const index = posts.findIndex((post) => post.id === postId);
       if (index < 0) return jsonResponse({ error: "not_found" }, 404, this.env);
-      if (!await canManagePost(posts[index], body, this.env)) {
+      if (!await canManagePostForClaims(posts[index], body, access.claims, this.env)) {
         return jsonResponse({ error: "invalid_password" }, 401, this.env);
       }
       const beforePost = posts[index];
@@ -3736,6 +3845,7 @@ export class BoardStore {
         views: beforePost.views,
         likes: beforePost.likes,
         comments: beforePost.comments,
+        authorMemberId: beforePost.authorMemberId,
         passwordHash: cleanBoardText(body?.newPostPassword, 200)
           ? await sha256Hex(body.newPostPassword)
           : beforePost.passwordHash,
@@ -3754,7 +3864,7 @@ export class BoardStore {
       await this.cleanupUnreferencedMedia(getPostBoardMediaIds(beforePost), savedPosts);
       await this.tryAddAdminLog({
         action: "post_update",
-        actor: adminMode ? "admin" : "post_password",
+        actor: access.claims?.role === "admin" || adminMode ? "admin" : (beforePost.authorMemberId === access.claims?.subject ? "member" : "post_password"),
         postId: updated.id,
         title: updated.title,
         beforeTitle: beforePost.title !== updated.title ? beforePost.title : "",
@@ -3765,11 +3875,13 @@ export class BoardStore {
     }
 
     if (request.method === "DELETE" && postId) {
+      const access = await this.getBoardWriteClaims(request);
+      if (access.response) return access.response;
       const body = await parseJsonBody(request);
       const posts = await this.readPosts();
       const target = posts.find((post) => post.id === postId);
       if (!target) return jsonResponse({ error: "not_found" }, 404, this.env);
-      if (!await canManagePost(target, body, this.env)) {
+      if (!await canManagePostForClaims(target, body, access.claims, this.env)) {
         return jsonResponse({ error: "invalid_password" }, 401, this.env);
       }
       const adminMode = await isAdminPassword(body?.adminPassword || "", this.env);
@@ -3778,7 +3890,7 @@ export class BoardStore {
       await this.cleanupUnreferencedMedia(getPostBoardMediaIds(target), savedPosts);
       await this.tryAddAdminLog({
         action: "post_delete",
-        actor: adminMode ? "admin" : "post_password",
+        actor: access.claims?.role === "admin" || adminMode ? "admin" : (target.authorMemberId === access.claims?.subject ? "member" : "post_password"),
         postId: target.id,
         title: target.title,
         category: target.category,
@@ -3933,9 +4045,19 @@ export default {
       return handleBoardCategories(request, env);
     }
     if (url.pathname === "/api/board/media" || url.pathname === "/api/board/media/uploads" || url.pathname.startsWith("/api/board/media/uploads/")) {
+      if (request.method === "POST") {
+        const authResponse = await requireBoardWriteStoredAuth(request, env);
+        if (authResponse) return authResponse;
+      }
       return handleBoardMedia(request, env, url);
     }
     if (url.pathname === "/api/board/posts" || url.pathname.startsWith("/api/board/posts/")) {
+      const isReadOnlyBoardRequest = request.method === "GET"
+        || (request.method === "POST" && url.pathname.endsWith("/view"));
+      if (!isReadOnlyBoardRequest) {
+        const authResponse = await requireBoardWriteStoredAuth(request, env);
+        if (authResponse) return authResponse;
+      }
       return handleBoardPosts(request, env, url);
     }
 

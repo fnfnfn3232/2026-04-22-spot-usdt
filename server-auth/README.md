@@ -19,6 +19,7 @@ The current frontend is wired to use this API when `window.SERVER_AUTH_API_BASE`
 - Member passwords must be 8-20 characters, include both an English letter and a number, and cannot repeat the same character more than four times in a row.
 - Member passwords are stored only as salted `PBKDF2-SHA256` hashes using 100,000 iterations. Plaintext passwords are never emailed to the administrator or saved in member records. Existing 210,000-iteration hashes remain valid. The current count is chosen to keep signup and login within the Cloudflare Workers Free CPU allowance.
 - Approved members log in with their email address and chosen password. When a verified sender is configured, a forgotten password can be reset with a one-time code sent to that member's own email address.
+- Membership approval grants read-only access. Board posts, comments, attachments, and owner edit/delete operations require a separate `board-approve` action in the site admin panel. This permission is checked again by the Worker for every board write request; hiding frontend buttons is not the security boundary.
 
 ## Required Cloudflare Worker environment variables
 
