@@ -1295,11 +1295,11 @@ async function requireActiveStoredAuth(request, env) {
   return response.ok ? null : jsonResponse({ error: "auth_required" }, 401, env);
 }
 
-async function requireBoardWriteStoredAuth(request, env) {
+async function requireBoardAccessStoredAuth(request, env) {
   const claims = await getRequestSessionClaims(request, env);
   if (!claims) return jsonResponse({ error: "auth_required" }, 401, env);
   if (claims.role === "admin") return null;
-  if (!env.BOARD_STORE) return jsonResponse({ error: "board_write_approval_required" }, 403, env);
+  if (!env.BOARD_STORE) return jsonResponse({ error: "board_access_approval_required" }, 403, env);
   const id = env.BOARD_STORE.idFromName("free-board");
   const response = await env.BOARD_STORE.get(id).fetch(new Request("https://board-store/api/session/check", {
     method: "GET",
@@ -1309,7 +1309,7 @@ async function requireBoardWriteStoredAuth(request, env) {
   const payload = await response.json().catch(() => null);
   return payload?.role === "admin" || payload?.boardWriteApproved === true
     ? null
-    : jsonResponse({ error: "board_write_approval_required" }, 403, env);
+    : jsonResponse({ error: "board_access_approval_required" }, 403, env);
 }
 
 function base64UrlToBytes(value) {
@@ -1400,6 +1400,16 @@ function isProtectedContentPath(url) {
     || url.pathname === "/api/board/categories"
     || url.pathname === "/api/board/logs"
     || url.pathname === "/api/board/media"
+    || url.pathname.startsWith("/api/board/media/")
+    || url.pathname === "/api/board/posts"
+    || url.pathname.startsWith("/api/board/posts/");
+}
+
+function isBoardAccessPath(url) {
+  return url.pathname === "/api/board/categories"
+    || url.pathname === "/api/board/media"
+    || url.pathname === "/api/board/media/uploads"
+    || url.pathname.startsWith("/api/board/media/uploads/")
     || url.pathname.startsWith("/api/board/media/")
     || url.pathname === "/api/board/posts"
     || url.pathname.startsWith("/api/board/posts/");
@@ -2190,13 +2200,13 @@ export class BoardStore {
       : null;
   }
 
-  async getBoardWriteClaims(request) {
+  async getBoardAccessClaims(request) {
     const claims = await this.getActiveSessionClaims(request);
     if (!claims) return { claims: null, response: jsonResponse({ error: "auth_required" }, 401, this.env) };
     if (claims.role === "admin" || claims.boardWriteApproved === true) return { claims, response: null };
     return {
       claims,
-      response: jsonResponse({ error: "board_write_approval_required" }, 403, this.env),
+      response: jsonResponse({ error: "board_access_approval_required" }, 403, this.env),
     };
   }
 
@@ -3537,8 +3547,8 @@ export class BoardStore {
     member.updatedAt = now;
     await this.writeMembers(members);
     const statusText = action === "board-approve"
-      ? "board posting approved"
-      : (action === "board-revoke" ? "board posting revoked" : (member.status === "active" ? "approved" : member.status));
+      ? "board access approved"
+      : (action === "board-revoke" ? "board access revoked" : (member.status === "active" ? "approved" : member.status));
     let emailSent = null;
     if (isMemberEmailDeliveryConfigured(this.env)) {
       emailSent = true;
@@ -3547,11 +3557,11 @@ export class BoardStore {
           recipient: member.email,
           subject: `ComaCap membership ${statusText}`,
           text: action === "board-approve"
-            ? "Your ComaCap board posting permission has been approved. You can now create posts and manage posts you own."
+            ? "Your ComaCap board access has been approved. You can now read the board, download attachments, and create or manage posts you own."
             : (action === "board-revoke"
-              ? "Your ComaCap board posting permission has been revoked. Your site membership remains active for read-only access."
+              ? "Your ComaCap board access has been revoked. Your site membership remains active, but the board and its attachments are no longer accessible."
               : (member.status === "active"
-                ? "Your ComaCap membership has been approved. You can now log in with your email address and the password you chose during signup. Board posting requires separate administrator approval."
+                ? "Your ComaCap membership has been approved. You can now log in with your email address and the password you chose during signup. Board access requires separate administrator approval."
                 : `Your ComaCap membership status is now ${member.status}.`)),
           idempotencyKey: `coin-member-${action}-${member.id}-${now}`,
         }, this.env);
@@ -3625,6 +3635,10 @@ export class BoardStore {
       const authResponse = await this.requireActiveAuth(request);
       if (authResponse) return authResponse;
     }
+    if (isBoardAccessPath(url)) {
+      const access = await this.getBoardAccessClaims(request);
+      if (access.response) return access.response;
+    }
 
     if (url.pathname === "/api/screen-settings") {
       if (request.method === "GET") {
@@ -3688,7 +3702,7 @@ export class BoardStore {
         || url.pathname.startsWith("/api/board/media/uploads/")
       )
     ) {
-      const access = await this.getBoardWriteClaims(request);
+      const access = await this.getBoardAccessClaims(request);
       if (access.response) return access.response;
     }
 
@@ -3723,7 +3737,7 @@ export class BoardStore {
     }
 
     if (request.method === "POST" && url.pathname === "/api/board/posts") {
-      const access = await this.getBoardWriteClaims(request);
+      const access = await this.getBoardAccessClaims(request);
       if (access.response) return access.response;
       const body = await parseJsonBody(request);
       const postPassword = cleanBoardText(body?.postPassword, 200);
@@ -3753,7 +3767,7 @@ export class BoardStore {
     }
 
     if (request.method === "POST" && postId && url.pathname.endsWith("/verify")) {
-      const access = await this.getBoardWriteClaims(request);
+      const access = await this.getBoardAccessClaims(request);
       if (access.response) return access.response;
       const id = postId.replace(/\/verify$/, "");
       const body = await parseJsonBody(request);
@@ -3767,7 +3781,7 @@ export class BoardStore {
     }
 
     if (request.method === "POST" && /^\/api\/board\/posts\/[^/]+\/comments$/.test(url.pathname)) {
-      const access = await this.getBoardWriteClaims(request);
+      const access = await this.getBoardAccessClaims(request);
       if (access.response) return access.response;
       const id = decodeURIComponent(url.pathname.split("/")[4] || "");
       const body = await parseJsonBody(request);
@@ -3793,7 +3807,7 @@ export class BoardStore {
     }
 
     if (request.method === "DELETE" && /^\/api\/board\/posts\/[^/]+\/comments\/[^/]+$/.test(url.pathname)) {
-      const access = await this.getBoardWriteClaims(request);
+      const access = await this.getBoardAccessClaims(request);
       if (access.response) return access.response;
       const parts = url.pathname.split("/");
       const id = decodeURIComponent(parts[4] || "");
@@ -3826,7 +3840,7 @@ export class BoardStore {
     }
 
     if (request.method === "PUT" && postId) {
-      const access = await this.getBoardWriteClaims(request);
+      const access = await this.getBoardAccessClaims(request);
       if (access.response) return access.response;
       const body = await parseJsonBody(request);
       const posts = await this.readPosts();
@@ -3875,7 +3889,7 @@ export class BoardStore {
     }
 
     if (request.method === "DELETE" && postId) {
-      const access = await this.getBoardWriteClaims(request);
+      const access = await this.getBoardAccessClaims(request);
       if (access.response) return access.response;
       const body = await parseJsonBody(request);
       const posts = await this.readPosts();
@@ -3923,7 +3937,7 @@ export default {
 
     if (request.method === "GET" && url.pathname.startsWith("/api/board/media/")) {
       if (!isAllowedOrigin(request, env)) return originNotAllowedResponse(env);
-      const authResponse = await requireActiveStoredAuth(request, env);
+      const authResponse = await requireBoardAccessStoredAuth(request, env);
       if (authResponse) return authResponse;
       return handleBoardMedia(request, env, url);
     }
@@ -4016,6 +4030,10 @@ export default {
       const authResponse = await requireActiveStoredAuth(request, env);
       if (authResponse) return authResponse;
     }
+    if (isBoardAccessPath(url)) {
+      const authResponse = await requireBoardAccessStoredAuth(request, env);
+      if (authResponse) return authResponse;
+    }
     if (url.pathname === "/api/screen-settings") {
       if (!env.BOARD_STORE) return jsonResponse({ error: "screen_settings_storage_not_configured" }, 500, env);
       const id = env.BOARD_STORE.idFromName("free-board");
@@ -4045,19 +4063,9 @@ export default {
       return handleBoardCategories(request, env);
     }
     if (url.pathname === "/api/board/media" || url.pathname === "/api/board/media/uploads" || url.pathname.startsWith("/api/board/media/uploads/")) {
-      if (request.method === "POST") {
-        const authResponse = await requireBoardWriteStoredAuth(request, env);
-        if (authResponse) return authResponse;
-      }
       return handleBoardMedia(request, env, url);
     }
     if (url.pathname === "/api/board/posts" || url.pathname.startsWith("/api/board/posts/")) {
-      const isReadOnlyBoardRequest = request.method === "GET"
-        || (request.method === "POST" && url.pathname.endsWith("/view"));
-      if (!isReadOnlyBoardRequest) {
-        const authResponse = await requireBoardWriteStoredAuth(request, env);
-        if (authResponse) return authResponse;
-      }
       return handleBoardPosts(request, env, url);
     }
 
