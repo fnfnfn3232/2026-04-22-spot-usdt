@@ -68,27 +68,29 @@
     }
 
     .lock-card {
-      width: min(420px, calc(100vw - 32px));
+      width: min(460px, calc(100vw - 32px));
       border: 1px solid rgba(151, 183, 198, 0.3);
-      border-radius: 18px;
-      padding: 18px;
+      border-radius: 16px;
+      padding: 28px;
       background: rgba(9, 22, 31, 0.96);
       box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
     }
 
     .lock-title {
-      margin: 0 0 8px;
-      font-size: 22px;
+      margin: 0 0 6px;
+      font-size: 28px;
       font-weight: 800;
       letter-spacing: -0.02em;
       color: var(--text);
+      text-align: center;
     }
 
     .lock-desc {
-      margin: 0 0 12px;
+      margin: 0 0 22px;
       color: var(--muted);
-      font-size: 14px;
+      font-size: 13px;
       line-height: 1.6;
+      text-align: center;
     }
 
     .lock-form {
@@ -148,13 +150,95 @@
     .lock-member-form,
     .lock-reset-passwords {
       display: grid;
-      gap: 8px;
+      gap: 10px;
     }
 
     .lock-member-form input,
     .lock-reset-passwords input {
       width: 100%;
       min-width: 0;
+    }
+
+    .lock-member-form > button {
+      width: 100%;
+      margin-top: 2px;
+      border-color: #007da6;
+      background: #007da6;
+      color: #ffffff;
+      font-weight: 700;
+    }
+
+    .lock-aux-nav {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px 16px;
+      margin-top: 16px;
+      color: var(--line);
+      font-size: 12px;
+    }
+
+    .lock-aux-link {
+      min-height: 0;
+      border: 0;
+      border-radius: 0;
+      padding: 3px 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .lock-aux-link:hover,
+    .lock-aux-link.is-active {
+      color: var(--accent);
+    }
+
+    .lock-aux-link.hidden {
+      display: none;
+    }
+
+    .lock-aux-panel {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(151, 183, 198, 0.2);
+    }
+
+    .lock-aux-panel.hidden {
+      display: none;
+    }
+
+    .lock-aux-panel .lock-email {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .lock-panel-title {
+      margin: 0 0 10px;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    @media (max-width: 560px) {
+      .lock-card {
+        width: min(100%, calc(100vw - 24px));
+        padding: 22px 18px;
+      }
+
+      .lock-title {
+        font-size: 25px;
+      }
+
+      .lock-desc {
+        margin-bottom: 18px;
+      }
+
+      .lock-aux-nav {
+        gap: 7px 12px;
+      }
     }
 
     .lock-member-actions {
@@ -182,11 +266,8 @@
     }
 
     .lock-signup-toggle {
-      width: 100%;
-      margin-top: 12px;
-      border-color: rgba(151, 183, 198, 0.24);
-      background: transparent;
-      color: var(--muted);
+      width: auto;
+      margin-top: 0;
     }
 
     .lock-signup-note {
@@ -6419,25 +6500,34 @@
   <div class="site-lock hidden" id="siteLock">
     <section class="lock-card">
       <h2 class="lock-title">로그인</h2>
-      <p class="lock-desc">관리자는 서버 비밀번호, 회원은 이메일과 비밀번호로 로그인할 수 있습니다.</p>
-      <form class="lock-form" id="lockForm">
-        <div class="lock-input-wrap">
-          <input id="lockPasswordInput" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="done" placeholder="비밀번호" />
-          <div class="lock-caps-warning" id="lockCapsWarning" role="status" aria-live="polite" hidden>Caps Lock이 켜져 있습니다.</div>
-        </div>
-        <button type="submit" id="lockSubmitBtn">확인</button>
-      </form>
-      <div class="lock-email" id="lockMemberPanel">
-        <p class="lock-signup-note">회원 로그인</p>
+      <p class="lock-desc">회원 이메일과 비밀번호를 입력해 주세요.</p>
+      <div id="lockMemberPanel">
         <form class="lock-member-form" id="lockMemberLoginForm">
           <input id="lockMemberEmailInput" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="회원 이메일" />
           <input id="lockMemberPasswordInput" type="password" autocomplete="current-password" placeholder="회원 비밀번호" />
-          <button id="lockMemberLoginBtn" type="submit">회원 로그인</button>
+          <button id="lockMemberLoginBtn" type="submit">로그인</button>
         </form>
-        <div class="lock-member-actions">
-          <button class="lock-member-link" id="lockPasswordResetToggleBtn" type="button">비밀번호 찾기</button>
-        </div>
-        <div class="lock-email hidden" id="lockPasswordResetPanel">
+        <div class="lock-email-status" id="lockMemberStatus" aria-live="polite"></div>
+      </div>
+      <nav class="lock-aux-nav" aria-label="로그인 보조 메뉴">
+        <button class="lock-aux-link lock-signup-toggle hidden" id="lockSignupToggleBtn" type="button" aria-expanded="false">회원가입</button>
+        <button class="lock-aux-link" id="lockPasswordResetToggleBtn" type="button" aria-expanded="false">비밀번호 찾기</button>
+        <button class="lock-aux-link" id="lockAdminToggleBtn" type="button" aria-expanded="false">관리자 로그인</button>
+        <button class="lock-aux-link hidden" id="lockEmailToggleBtn" type="button" aria-expanded="false">이메일 코드 로그인</button>
+      </nav>
+      <div class="lock-aux-panel hidden" id="lockAdminPanel">
+        <p class="lock-panel-title">관리자 로그인</p>
+        <form class="lock-form" id="lockForm">
+          <div class="lock-input-wrap">
+            <input id="lockPasswordInput" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="done" placeholder="관리자 비밀번호" />
+            <div class="lock-caps-warning" id="lockCapsWarning" role="status" aria-live="polite" hidden>Caps Lock이 켜져 있습니다.</div>
+          </div>
+          <button type="submit" id="lockSubmitBtn">확인</button>
+        </form>
+      </div>
+      <div class="lock-aux-panel hidden" id="lockPasswordResetPanel">
+        <div class="lock-email">
+          <p class="lock-panel-title">비밀번호 찾기</p>
           <p class="lock-signup-note">가입한 회원 이메일로 재설정 코드를 보냅니다.</p>
           <div class="lock-email-request-row">
             <input class="lock-email-address" id="lockPasswordResetEmailInput" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="회원 이메일" />
@@ -6451,30 +6541,33 @@
           </form>
           <div class="lock-email-status" id="lockPasswordResetStatus" aria-live="polite"></div>
         </div>
-        <div class="lock-email-status" id="lockMemberStatus" aria-live="polite"></div>
       </div>
-      <div class="lock-email hidden" id="lockEmailPanel">
-        <p class="lock-signup-note">관리자 이메일 코드 로그인</p>
-        <div class="lock-email-request-row">
-          <input class="lock-email-address" id="lockEmailAddressInput" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="코드를 받을 이메일" />
-          <button class="lock-email-request" id="lockEmailRequestBtn" type="button">코드 받기</button>
+      <div class="lock-aux-panel hidden" id="lockEmailPanel">
+        <div class="lock-email">
+          <p class="lock-panel-title">이메일 코드 로그인</p>
+          <div class="lock-email-request-row">
+            <input class="lock-email-address" id="lockEmailAddressInput" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="코드를 받을 관리자 이메일" />
+            <button class="lock-email-request" id="lockEmailRequestBtn" type="button">코드 받기</button>
+          </div>
+          <form class="lock-email-verify" id="lockEmailVerifyForm" hidden>
+            <input id="lockEmailCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="6자리 인증번호" />
+            <button id="lockEmailVerifyBtn" type="submit">코드 확인</button>
+          </form>
+          <div class="lock-email-status" id="lockEmailStatus" aria-live="polite"></div>
         </div>
-        <form class="lock-email-verify" id="lockEmailVerifyForm" hidden>
-          <input id="lockEmailCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="6자리 인증번호" />
-          <button id="lockEmailVerifyBtn" type="submit">코드 확인</button>
-        </form>
-        <div class="lock-email-status" id="lockEmailStatus" aria-live="polite"></div>
       </div>
-      <button class="lock-signup-toggle hidden" id="lockSignupToggleBtn" type="button">회원가입 신청</button>
-      <div class="lock-email hidden" id="lockSignupPanel">
-        <p class="lock-signup-note">이메일과 비밀번호로 신청하면 관리자가 확인 후 승인합니다.</p>
-        <form class="lock-reset-passwords" id="lockSignupForm">
-          <input id="lockSignupEmailInput" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="가입할 이메일" />
-          <input id="lockSignupPasswordInput" type="password" autocomplete="new-password" placeholder="사용할 비밀번호 (영문·숫자 포함 10자 이상)" />
-          <input id="lockSignupPasswordConfirmInput" type="password" autocomplete="new-password" placeholder="비밀번호 확인" />
-          <button id="lockSignupRequestBtn" type="submit">가입 신청</button>
-        </form>
-        <div class="lock-email-status" id="lockSignupStatus" aria-live="polite"></div>
+      <div class="lock-aux-panel hidden" id="lockSignupPanel">
+        <div class="lock-email">
+          <p class="lock-panel-title">회원가입</p>
+          <p class="lock-signup-note">이메일과 비밀번호로 신청하면 관리자가 확인 후 승인합니다.</p>
+          <form class="lock-reset-passwords" id="lockSignupForm">
+            <input id="lockSignupEmailInput" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="가입할 이메일" />
+            <input id="lockSignupPasswordInput" type="password" autocomplete="new-password" placeholder="사용할 비밀번호 (영문·숫자 포함 10자 이상)" />
+            <input id="lockSignupPasswordConfirmInput" type="password" autocomplete="new-password" placeholder="비밀번호 확인" />
+            <button id="lockSignupRequestBtn" type="submit">가입 신청</button>
+          </form>
+          <div class="lock-email-status" id="lockSignupStatus" aria-live="polite"></div>
+        </div>
       </div>
       <div class="lock-error" id="lockError"></div>
     </section>
@@ -7015,6 +7108,9 @@
       const lockPasswordInput = document.getElementById("lockPasswordInput");
       const lockCapsWarning = document.getElementById("lockCapsWarning");
       const lockError = document.getElementById("lockError");
+      const lockAdminToggleBtn = document.getElementById("lockAdminToggleBtn");
+      const lockAdminPanel = document.getElementById("lockAdminPanel");
+      const lockEmailToggleBtn = document.getElementById("lockEmailToggleBtn");
       const lockEmailPanel = document.getElementById("lockEmailPanel");
       const lockEmailAddressInput = document.getElementById("lockEmailAddressInput");
       const lockEmailRequestBtn = document.getElementById("lockEmailRequestBtn");
@@ -7564,6 +7660,30 @@
         lockEmailStatus.classList.toggle("is-error", Boolean(isError));
       }
 
+      function closeLockAuxPanels(exceptPanel = null) {
+        [
+          [lockSignupPanel, lockSignupToggleBtn],
+          [lockPasswordResetPanel, lockPasswordResetToggleBtn],
+          [lockAdminPanel, lockAdminToggleBtn],
+          [lockEmailPanel, lockEmailToggleBtn],
+        ].forEach(([panel, button]) => {
+          const keepOpen = panel === exceptPanel;
+          panel.classList.toggle("hidden", !keepOpen);
+          button.classList.toggle("is-active", keepOpen);
+          button.setAttribute("aria-expanded", keepOpen ? "true" : "false");
+        });
+      }
+
+      function toggleLockAuxPanel(panel, button, focusTarget) {
+        const willOpen = panel.classList.contains("hidden");
+        closeLockAuxPanels(willOpen ? panel : null);
+        lockError.textContent = "";
+        if (willOpen && focusTarget) {
+          window.setTimeout(() => focusTarget.focus(), 0);
+        }
+        return willOpen;
+      }
+
       function stopEmailOtpTimer() {
         if (emailOtpTimerId) {
           window.clearInterval(emailOtpTimerId);
@@ -7615,6 +7735,7 @@
 
       async function refreshEmailLoginAvailability(force = false) {
         if (!hasServerAuth() || isLocalPreview()) {
+          lockEmailToggleBtn.classList.add("hidden");
           lockEmailPanel.classList.add("hidden");
           return false;
         }
@@ -7625,7 +7746,8 @@
         })
           .then((payload) => {
             const enabled = Boolean(payload?.enabled);
-            lockEmailPanel.classList.toggle("hidden", !enabled);
+            lockEmailToggleBtn.classList.toggle("hidden", !enabled);
+            if (!enabled) lockEmailPanel.classList.add("hidden");
             if (enabled && !emailOtpRequestId) {
               setEmailLoginStatus("등록된 이메일 주소를 입력해 주세요.");
             }
@@ -7633,6 +7755,7 @@
           })
           .catch((error) => {
             console.error("email_login_status_failed", error);
+            lockEmailToggleBtn.classList.add("hidden");
             lockEmailPanel.classList.add("hidden");
             return false;
           })
@@ -7655,7 +7778,8 @@
         lockSignupRequestBtn.disabled = false;
         lockSignupRequestBtn.textContent = "가입 신청";
         lockSignupPanel.classList.add("hidden");
-        lockSignupToggleBtn.textContent = "회원가입 신청";
+        lockSignupToggleBtn.classList.remove("is-active");
+        lockSignupToggleBtn.setAttribute("aria-expanded", "false");
         if (!keepMessage) setSignupStatus("");
       }
 
@@ -7754,6 +7878,7 @@
         setPasswordResetStatus("");
         resetEmailLoginForm();
         resetSignupForm();
+        closeLockAuxPanels();
         scheduleMarketChart();
         requestServerScreenSettingsRefresh({ selectDefault: true });
         if (state.viewMode === "board") {
@@ -11575,13 +11700,15 @@
         document.body.classList.add("locked");
         siteLock.classList.remove("hidden");
         lockPasswordInput.value = "";
+        lockMemberPasswordInput.value = "";
         lockError.textContent = "";
         setLockCapsWarning(false);
         resetEmailLoginForm();
         resetSignupForm();
+        closeLockAuxPanels();
         refreshEmailLoginAvailability();
         refreshSignupAvailability();
-        window.setTimeout(() => lockPasswordInput.focus(), 0);
+        window.setTimeout(() => lockMemberEmailInput.focus(), 0);
       }
 
       function hideSiteLock() {
@@ -11804,14 +11931,27 @@
         }
       });
 
+      lockAdminToggleBtn.addEventListener("click", () => {
+        const willOpen = toggleLockAuxPanel(lockAdminPanel, lockAdminToggleBtn, lockPasswordInput);
+        if (!willOpen) {
+          lockPasswordInput.value = "";
+          setLockCapsWarning(false);
+        }
+      });
+
+      lockEmailToggleBtn.addEventListener("click", () => {
+        toggleLockAuxPanel(lockEmailPanel, lockEmailToggleBtn, lockEmailAddressInput);
+      });
+
       lockPasswordResetToggleBtn.addEventListener("click", () => {
-        const willOpen = lockPasswordResetPanel.classList.contains("hidden");
-        lockPasswordResetPanel.classList.toggle("hidden", !willOpen);
-        lockPasswordResetToggleBtn.textContent = willOpen ? "비밀번호 찾기 닫기" : "비밀번호 찾기";
+        const willOpen = toggleLockAuxPanel(
+          lockPasswordResetPanel,
+          lockPasswordResetToggleBtn,
+          lockPasswordResetEmailInput
+        );
         if (willOpen) {
           lockPasswordResetEmailInput.value = String(lockMemberEmailInput.value || "").trim().toLowerCase();
           setPasswordResetStatus("가입한 회원 이메일을 입력해 주세요.");
-          window.setTimeout(() => lockPasswordResetEmailInput.focus(), 0);
         }
       });
 
@@ -11884,7 +12024,8 @@
           passwordResetRequestId = "";
           passwordResetExpiresAt = 0;
           lockPasswordResetPanel.classList.add("hidden");
-          lockPasswordResetToggleBtn.textContent = "비밀번호 찾기";
+          lockPasswordResetToggleBtn.classList.remove("is-active");
+          lockPasswordResetToggleBtn.setAttribute("aria-expanded", "false");
           setMemberLoginStatus("비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.");
           lockMemberPasswordInput.focus();
         } catch (error) {
@@ -11982,12 +12123,9 @@
       });
 
       lockSignupToggleBtn.addEventListener("click", () => {
-        const willOpen = lockSignupPanel.classList.contains("hidden");
-        lockSignupPanel.classList.toggle("hidden", !willOpen);
-        lockSignupToggleBtn.textContent = willOpen ? "회원가입 닫기" : "회원가입 신청";
+        const willOpen = toggleLockAuxPanel(lockSignupPanel, lockSignupToggleBtn, lockSignupEmailInput);
         if (willOpen) {
           setSignupStatus("가입 신청 후 관리자 승인을 기다려 주세요.");
-          window.setTimeout(() => lockSignupEmailInput.focus(), 0);
         } else {
           resetSignupForm();
         }
