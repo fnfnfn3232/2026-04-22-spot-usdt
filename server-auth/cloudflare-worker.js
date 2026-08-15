@@ -19,8 +19,8 @@ const EMAIL_OTP_SIGNUP_GLOBAL_RATE_KEY = "email-signup-global-rate";
 const MEMBER_PASSWORD_ATTEMPT_KEY_PREFIX = "member-password-attempt:";
 const MEMBER_PASSWORD_RESET_KEY_PREFIX = "member-password-reset:";
 const MEMBER_PASSWORD_RESET_GLOBAL_RATE_KEY = "member-password-reset-global-rate";
-const MEMBER_SIGNUP_RATE_KEY_PREFIX = "member-signup-rate:";
-const MEMBER_SIGNUP_GLOBAL_RATE_KEY = "member-signup-global-rate";
+const MEMBER_SIGNUP_RATE_KEY_PREFIX = "member-signup-rate-v2:";
+const MEMBER_SIGNUP_GLOBAL_RATE_KEY = "member-signup-global-rate-v2";
 const MEMBERS_KEY = "site-members-v1";
 const MEMBER_MAX_ITEMS = 200;
 const BOARD_MAX_POSTS = 200;
@@ -61,10 +61,10 @@ const EMAIL_OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 const EMAIL_OTP_HOURLY_LIMIT = 5;
 const EMAIL_OTP_GLOBAL_HOURLY_LIMIT = 10;
 const EMAIL_OTP_VERIFY_LIMIT = 5;
-const MEMBER_PASSWORD_MIN_LENGTH = 10;
-const MEMBER_PASSWORD_MAX_LENGTH = 72;
+const MEMBER_PASSWORD_MIN_LENGTH = 8;
+const MEMBER_PASSWORD_MAX_LENGTH = 20;
 const MEMBER_PASSWORD_LEGACY_ITERATIONS = 210000;
-const MEMBER_PASSWORD_ITERATIONS = 600000;
+const MEMBER_PASSWORD_ITERATIONS = 210000;
 const MEMBER_PASSWORD_RESET_TTL_MS = 10 * 60 * 1000;
 const MEMBER_SIGNUP_COOLDOWN_MS = 60 * 1000;
 const MEMBER_SIGNUP_HOURLY_LIMIT = 5;
@@ -440,12 +440,24 @@ function timingSafeEqual(a, b) {
 
 function getMemberPasswordError(password) {
   const value = String(password || "");
-  const length = Array.from(value).length;
+  const characters = Array.from(value);
+  const length = characters.length;
   if (length < MEMBER_PASSWORD_MIN_LENGTH || length > MEMBER_PASSWORD_MAX_LENGTH) {
     return "invalid_member_password_length";
   }
   if (!/[A-Za-z]/.test(value) || !/\d/.test(value)) {
     return "weak_member_password";
+  }
+  let previousCharacter = "";
+  let consecutiveCount = 0;
+  for (const character of characters) {
+    if (character === previousCharacter) {
+      consecutiveCount += 1;
+    } else {
+      previousCharacter = character;
+      consecutiveCount = 1;
+    }
+    if (consecutiveCount > 4) return "member_password_repetition";
   }
   if (textEncoder().encode(value).byteLength > 256) return "invalid_member_password_length";
   return "";

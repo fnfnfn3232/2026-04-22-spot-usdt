@@ -16,7 +16,8 @@ The current frontend is wired to use this API when `window.SERVER_AUTH_API_BASE`
 - Coinness news is stored and returned as preview-only data. Full original text is intentionally not stored.
 - Board attachments can be stored in the private Cloudflare R2 bucket bound as `BOARD_MEDIA_BUCKET`.
 - New members enter an email address and choose their own password, then wait for approval in the site admin panel.
-- Member passwords are stored only as salted `PBKDF2-SHA256` hashes using 600,000 iterations. Plaintext passwords are never emailed to the administrator or saved in member records. Legacy 210,000-iteration hashes are upgraded with a new salt after the member's next successful password login.
+- Member passwords must be 8-20 characters, include both an English letter and a number, and cannot repeat the same character more than four times in a row.
+- Member passwords are stored only as salted `PBKDF2-SHA256` hashes using 210,000 iterations. Plaintext passwords are never emailed to the administrator or saved in member records. This count stays within the Cloudflare Workers Free CPU limit; higher counts caused signup and login requests to terminate with HTTP 500.
 - Approved members log in with their email address and chosen password. When a verified sender is configured, a forgotten password can be reset with a one-time code sent to that member's own email address.
 
 ## Required Cloudflare Worker environment variables
