@@ -6936,7 +6936,7 @@
         boardDesc: "\uAE00\uC740 \uC774 \uBE0C\uB77C\uC6B0\uC800\uC5D0 \uC800\uC7A5\uB429\uB2C8\uB2E4. \uB4F1\uB85D \uC804 \uC0AC\uC774\uD2B8 \uBE44\uBC00\uBC88\uD638\uB97C \uC785\uB825\uD574\uC57C \uD569\uB2C8\uB2E4.",
         boardSafeHelp: "HTML, script, iframe\uC740 \uC2E4\uD589\uD558\uC9C0 \uC54A\uACE0 \uBB38\uC790\uB85C\uB9CC \uD45C\uC2DC\uB429\uB2C8\uB2E4. \uCF54\uB4DC\uB294 ``` \uCF54\uB4DC ``` \uD615\uC2DD\uC73C\uB85C \uB123\uC73C\uBA74 \uBCF4\uAE30 \uC88B\uAC8C \uB098\uC635\uB2C8\uB2E4.",
         boardMediaHelp: "\uBBF8\uB514\uC5B4 URL\uC740 \uC774\uBBF8\uC9C0(png, jpg, jpeg, gif, webp, avif)\uC640 \uB3D9\uC601\uC0C1(mp4, webm, ogv)\uB9CC \uD5C8\uC6A9\uD569\uB2C8\uB2E4.",
-        placeholder: "\uCF54\uC778\uBA85, \uC2EC\uBCFC, \uD398\uC5B4 \uAC80\uC0C9",
+        placeholder: "\uCF54\uC778\uBA85, \uC2EC\uBCFC, \uD398\uC5B4, \uC124\uBA85 \uAC80\uC0C9",
         thRank: "\uC21C\uBC88",
       thCoin: "\uCF54\uC778",
       thSymbol: "\uC2EC\uBCFC",
@@ -14987,6 +14987,50 @@
         return 5;
       }
 
+      function normalizeMarketSearchValue(value) {
+        return String(value || "")
+          .normalize("NFKC")
+          .toLocaleLowerCase("ko-KR")
+          .replace(/\s+/g, "");
+      }
+
+      function getMarketSearchValues(row) {
+        const values = [
+          row.name,
+          row.symbol,
+          row.compareSymbol,
+          row.symbolAliasOf,
+          row.pair,
+          row.englishName,
+          row.koreanName,
+          row.capSource,
+        ];
+
+        normalizedListingSymbols(row).forEach((symbol) => {
+          const info = data.coinInfo?.[symbol] || {};
+          const upbit = info.sources?.upbit || {};
+          const bithumb = info.sources?.bithumb || {};
+          values.push(
+            info.koreanName,
+            info.englishName,
+            bithumb.description,
+            upbit.mainnetFeature
+          );
+        });
+
+        return values.filter((value) => value !== null && value !== undefined && String(value).trim());
+      }
+
+      function matchesMarketSearch(row, query) {
+        const normalizedQuery = normalizeMarketSearchValue(query);
+        if (!normalizedQuery) return true;
+
+        const searchableText = getMarketSearchValues(row)
+          .map(normalizeMarketSearchValue)
+          .join(" ");
+        return searchableText.includes(normalizedQuery);
+      }
+
       function getRowPriceSortUsd(row) {
         const priceUsd = toPositiveNumber(row?.priceUsd);
         if (priceUsd !== null) return priceUsd;
@@ -15010,20 +15054,7 @@
 
           const filtered = !query
             ? compared
-            : compared.filter((row) => {
-                return [
-                  row.name,
-                  row.symbol,
-                  row.compareSymbol,
-                  row.symbolAliasOf,
-                  row.pair,
-                  row.englishName,
-                  row.koreanName,
-                  row.capSource,
-                ]
-                  .filter(Boolean)
-                .some((value) => String(value).toLowerCase().includes(query));
-            });
+            : compared.filter((row) => matchesMarketSearch(row, query));
 
         return filtered.sort((a, b) => {
           if (query) {
