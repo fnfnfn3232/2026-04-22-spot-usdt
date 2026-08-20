@@ -14794,21 +14794,21 @@
         isApplyingHistoryState = true;
         freeBoardMode = ["list", "read", "write", "edit"].includes(payload.freeBoardMode) ? payload.freeBoardMode : "list";
         freeBoardSelectedId = String(payload.freeBoardSelectedId || "");
-        freeBoardPage = Math.max(1, Math.floor(Number(payload.freeBoardPage) || 1));
-        freeBoardQuery = String(payload.freeBoardQuery || "");
+        freeBoardPage = 1;
+        freeBoardQuery = "";
         freeBoardFilter = getFreeBoardCategories().some((item) => item.value === payload.freeBoardFilter)
           ? String(payload.freeBoardFilter)
           : "all";
         rankingCategory = DEFILLAMA_RANKING_CATEGORIES[payload.rankingCategory]
           ? String(payload.rankingCategory)
           : "tvl";
-        rankingQuery = String(payload.rankingQuery || "").slice(0, 80);
+        rankingQuery = "";
         rankingVisibleCount = RANKING_PAGE_SIZE;
         futuresExchange = ["binance", "coinbase"].includes(payload.futuresExchange)
           ? String(payload.futuresExchange)
           : "binance";
-        futuresQuery = String(payload.futuresQuery || "").slice(0, 80);
-        futuresPage = Math.max(1, Math.floor(Number(payload.futuresPage) || 1));
+        futuresQuery = "";
+        futuresPage = 1;
         futuresSortDirection = payload.futuresSortDirection === "asc" ? "asc" : "desc";
         upbitAuditFilter = ["listed", "report", "low"].includes(payload.upbitAuditFilter)
           ? String(payload.upbitAuditFilter)
@@ -14816,8 +14816,8 @@
         upbitAuditSort = ["report", "share-desc", "share-asc", "value-desc", "value-asc"].includes(payload.upbitAuditSort)
           ? String(payload.upbitAuditSort)
           : "report";
-        upbitAuditQuery = String(payload.upbitAuditQuery || "").slice(0, 80);
-        upbitAuditPage = Math.max(1, Math.floor(Number(payload.upbitAuditPage) || 1));
+        upbitAuditQuery = "";
+        upbitAuditPage = 1;
         setViewMode(payload.viewMode, { writeHistory: false });
         isApplyingHistoryState = false;
         saveAppViewState();
@@ -14877,6 +14877,29 @@
         freeBoardFilter = "all";
         freeBoardAdminPanelOpen = false;
         freeBoardAdminSelectedPostIds.clear();
+      }
+
+      function resetViewSearchState(viewMode) {
+        if (viewMode === "news") {
+          newsSearchQuery = "";
+          data.news = { items: [], query: "", total: 0, storedCount: 0, hasMore: false, nextOffset: 0 };
+          liveNewsFetchedAtMs = 0;
+          return;
+        }
+        if (viewMode === "ranking") {
+          rankingQuery = "";
+          rankingVisibleCount = RANKING_PAGE_SIZE;
+          return;
+        }
+        if (viewMode === "futures") {
+          futuresQuery = "";
+          futuresPage = 1;
+          return;
+        }
+        if (viewMode === "audit") {
+          upbitAuditQuery = "";
+          upbitAuditPage = 1;
+        }
       }
 
       function goHomeView() {
@@ -16296,6 +16319,7 @@
       });
 
       newsToggleBtn.addEventListener("click", () => {
+        resetViewSearchState("news");
         setViewMode("news");
       });
 
@@ -16325,17 +16349,17 @@
       });
 
       rankingToggleBtn.addEventListener("click", () => {
-        rankingVisibleCount = RANKING_PAGE_SIZE;
+        resetViewSearchState("ranking");
         setViewMode("ranking");
       });
 
       futuresToggleBtn.addEventListener("click", () => {
-        futuresPage = 1;
+        resetViewSearchState("futures");
         setViewMode("futures");
       });
 
       auditToggleBtn.addEventListener("click", () => {
-        upbitAuditPage = 1;
+        resetViewSearchState("audit");
         setViewMode("audit");
       });
 
