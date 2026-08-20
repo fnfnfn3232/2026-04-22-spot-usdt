@@ -32,6 +32,7 @@ COINGECKO_SYMBOL_BATCH_SIZE = 50
 COINMARKETCAP_QUOTES_ENDPOINT = (
     "https://pro-api.coinmarketcap.com/public-api/v3/cryptocurrency/quotes/latest"
 )
+COINMARKETCAP_SYMBOL_BATCH_SIZE = 100
 COINBASE_CURRENCIES_ENDPOINT = "https://api.exchange.coinbase.com/currencies"
 COINBASE_PRODUCT_STATS_ENDPOINT = "https://api.exchange.coinbase.com/products/stats"
 BINANCE_USDM_FUTURES_INFO_ENDPOINT = "https://www.binance.com/fapi/v1/exchangeInfo"
@@ -2483,71 +2484,80 @@ def fetch_coinmarketcap_market_candidates(target_symbols: set[str]) -> dict[str,
     if not target_symbols:
         return {}
 
-    query = urllib.parse.urlencode(
-        {
-            "symbol": ",".join(sorted(target_symbols)),
-            "convert": "USD",
-            "skip_invalid": "true",
-        }
-    )
-    payload = fetch_json(f"{COINMARKETCAP_QUOTES_ENDPOINT}?{query}", retries=4, pause=3.0)
-    items = payload.get("data") if isinstance(payload, dict) else None
-    if not isinstance(items, list):
-        return {}
-
     candidates: dict[str, list[dict]] = {}
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        symbol = str(item.get("symbol") or "").upper()
-        if symbol not in target_symbols:
-            continue
-
-        quotes = item.get("quote")
-        if isinstance(quotes, dict):
-            quote = quotes.get("USD") if isinstance(quotes.get("USD"), dict) else None
-        elif isinstance(quotes, list):
-            quote = next(
-                (
-                    quote_item
-                    for quote_item in quotes
-                    if isinstance(quote_item, dict)
-                    and str(quote_item.get("symbol") or "").upper() == "USD"
-                ),
-                None,
-            )
-        else:
-            quote = None
-        if not isinstance(quote, dict):
+    sorted_symbols = sorted(target_symbols)
+    seen_source_ids: set[str] = set()
+    for offset in range(0, len(sorted_symbols), COINMARKETCAP_SYMBOL_BATCH_SIZE):
+        symbol_batch = sorted_symbols[offset : offset + COINMARKETCAP_SYMBOL_BATCH_SIZE]
+        query = urllib.parse.urlencode(
+            {
+                "symbol": ",".join(symbol_batch),
+                "convert": "USD",
+                "skip_invalid": "true",
+            }
+        )
+        payload = fetch_json(f"{COINMARKETCAP_QUOTES_ENDPOINT}?{query}", retries=4, pause=3.0)
+        items = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(items, list):
             continue
 
-        market_cap_usd = to_float(quote.get("market_cap"))
-        if market_cap_usd is None:
-            continue
+        for item in items:
+            if not isinstance(item, dict) or item.get("is_active") == 0:
+                continue
+            symbol = str(item.get("symbol") or "").upper()
+            if symbol not in target_symbols:
+                continue
 
-        circulating_supply = to_float(item.get("circulating_supply"))
-        total_supply = to_float(item.get("max_supply")) or to_float(item.get("total_supply"))
-        fdv_usd = to_float(quote.get("fully_diluted_market_cap"))
-        cmc_id = str(item.get("id") or "")
-        name = str(item.get("name") or symbol)
-        candidate = {
-            "symbol": symbol,
-            "name": name,
-            "englishName": name,
-            "koreanName": name,
-            "circulatingSupply": circulating_supply,
-            "totalSupply": total_supply,
-            "circulatingRatio": compute_circulating_ratio(circulating_supply, total_supply),
-            "fdvUsd": fdv_usd,
-            "fdvKrw": fdv_usd * FX_USD_KRW if fdv_usd is not None else None,
-            "marketCapUsd": market_cap_usd,
-            "priceUsd": to_float(quote.get("price")),
-            "marketCapRank": item.get("cmc_rank"),
-            "supplyDetail": f"coinmarketcap_quotes:{cmc_id}",
-            "sourceId": cmc_id,
-            "nameKeys": list(build_name_keys(symbol, name, name)),
-        }
-        candidates.setdefault(symbol, []).append(candidate)
+            quotes = item.get("quote")
+            if isinstance(quotes, dict):
+                quote = quotes.get("USD") if isinstance(quotes.get("USD"), dict) else None
+            elif isinstance(quotes, list):
+                quote = next(
+                    (
+                        quote_item
+                        for quote_item in quotes
+                        if isinstance(quote_item, dict)
+                        and str(quote_item.get("symbol") or "").upper() == "USD"
+                    ),
+                    None,
+                )
+            else:
+                quote = None
+            if not isinstance(quote, dict):
+                continue
+
+            market_cap_usd = to_float(quote.get("market_cap"))
+            if market_cap_usd is None:
+                continue
+
+            cmc_id = str(item.get("id") or "")
+            if cmc_id and cmc_id in seen_source_ids:
+                continue
+            if cmc_id:
+                seen_source_ids.add(cmc_id)
+
+            circulating_supply = to_float(item.get("circulating_supply"))
+            total_supply = to_float(item.get("max_supply")) or to_float(item.get("total_supply"))
+            fdv_usd = to_float(quote.get("fully_diluted_market_cap"))
+            name = str(item.get("name") or symbol)
+            candidate = {
+                "symbol": symbol,
+                "name": name,
+                "englishName": name,
+                "koreanName": name,
+                "circulatingSupply": circulating_supply,
+                "totalSupply": total_supply,
+                "circulatingRatio": compute_circulating_ratio(circulating_supply, total_supply),
+                "fdvUsd": fdv_usd,
+                "fdvKrw": fdv_usd * FX_USD_KRW if fdv_usd is not None else None,
+                "marketCapUsd": market_cap_usd,
+                "priceUsd": to_float(quote.get("price")),
+                "marketCapRank": item.get("cmc_rank"),
+                "supplyDetail": f"coinmarketcap_quotes:{cmc_id}",
+                "sourceId": cmc_id,
+                "nameKeys": list(build_name_keys(symbol, name, name)),
+            }
+            candidates.setdefault(symbol, []).append(candidate)
 
     return candidates
 
@@ -2701,6 +2711,46 @@ def apply_external_market_cap_fills(
             f"{candidate.get('sourceId') or candidate.get('supplyDetail') or ''}"
         )
         row["supplyDetail"] = f"{board_name}_supply_fill:{candidate.get('supplyDetail') or ''}"
+        row["status"] = "ok"
+
+
+def apply_futures_external_market_cap_overrides(
+    rows: list[dict],
+    candidates_by_symbol: dict[str, list[dict]],
+) -> None:
+    for row in rows:
+        candidate_rows = [
+            candidate_row
+            for symbol in row_symbols(row)
+            for candidate_row in candidates_by_symbol.get(symbol, [])
+        ]
+        candidate = pick_name_matched_market_candidate(row, candidate_rows)
+        if candidate is None:
+            candidate = pick_largest_market_candidate(candidate_rows)
+        if candidate is None:
+            continue
+
+        market_cap_usd = to_float(candidate.get("marketCapUsd"))
+        if market_cap_usd is None:
+            continue
+
+        circulating_supply = to_float(candidate.get("circulatingSupply"))
+        total_supply = to_float(candidate.get("totalSupply"))
+        fdv_usd = to_float(candidate.get("fdvUsd"))
+        row["marketCapUsd"] = market_cap_usd
+        row["marketCapKrw"] = market_cap_usd * FX_USD_KRW
+        row["marketCapRank"] = candidate.get("marketCapRank")
+        row["circulatingSupply"] = circulating_supply
+        row["totalSupply"] = total_supply
+        row["circulatingRatio"] = compute_circulating_ratio(circulating_supply, total_supply)
+        row["fdvUsd"] = fdv_usd
+        row["fdvKrw"] = fdv_usd * FX_USD_KRW if fdv_usd is not None else None
+        row["capSource"] = "futures_underlying_coinmarketcap"
+        row["capSourceDetail"] = (
+            "coinmarketcap_active_highest_market_cap:"
+            f"{candidate.get('symbol') or ''}:{candidate.get('sourceId') or ''}"
+        )
+        row["supplyDetail"] = f"futures_supply:{candidate.get('supplyDetail') or ''}"
         row["status"] = "ok"
 
 
@@ -3863,6 +3913,25 @@ def make_payload(previous_payload: dict | None = None) -> dict:
             )
         except Exception as error:  # noqa: BLE001
             refresh_issues["futures_coingecko"] = f"fetch_failed:{error}"
+
+    futures_symbols = {
+        str(row.get("symbol") or "").upper()
+        for rows in futures_rows.values()
+        for row in rows
+        if str(row.get("symbol") or "").strip()
+    }
+    if futures_symbols:
+        try:
+            futures_coinmarketcap_candidates = fetch_coinmarketcap_market_candidates(
+                futures_symbols
+            )
+            for rows in futures_rows.values():
+                apply_futures_external_market_cap_overrides(
+                    rows,
+                    futures_coinmarketcap_candidates,
+                )
+        except Exception as error:  # noqa: BLE001
+            refresh_issues["futures_coinmarketcap"] = f"fetch_failed:{error}"
 
     expected_pairs = {
         "binance": {str(row.get("pair") or "").strip() for row in binance_rows},
