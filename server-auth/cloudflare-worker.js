@@ -201,15 +201,16 @@ function optionsResponse(request, env) {
       }),
     });
   }
+  const requestedHeaders = String(request.headers.get("Access-Control-Request-Headers") || "").trim();
   return new Response(null, {
     status: 204,
     headers: applySecurityHeaders({
       "Access-Control-Allow-Origin": env.FRONTEND_ORIGIN || "",
       "Access-Control-Allow-Credentials": "true",
-      "Access-Control-Allow-Headers": "Authorization, Cache-Control, Content-Type, Pragma, X-File-Name",
+      "Access-Control-Allow-Headers": requestedHeaders || "Authorization, Cache-Control, Content-Type, Pragma, X-File-Name",
       "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-      "Access-Control-Max-Age": "86400",
-      "Vary": "Origin",
+      "Access-Control-Max-Age": "600",
+      "Vary": "Origin, Access-Control-Request-Headers",
     }),
   });
 }
@@ -4000,10 +4001,27 @@ export default {
     if (url.pathname === "/api/logout" && request.method === "POST") {
       return handleLogout(env);
     }
-    if (url.pathname === "/api/session" && request.method === "GET") {
+    if (url.pathname === "/api/session" && ["GET", "POST"].includes(request.method)) {
       if (!env.BOARD_STORE) return handleSession(request, env);
       const id = env.BOARD_STORE.idFromName("free-board");
-      return env.BOARD_STORE.get(id).fetch(request);
+      if (request.method === "GET") return env.BOARD_STORE.get(id).fetch(request);
+      const contentType = String(request.headers.get("Content-Type") || "").toLowerCase();
+      if (!contentType.startsWith("application/x-www-form-urlencoded")) {
+        return jsonResponse({ error: "invalid_session_refresh_request" }, 400, env);
+      }
+      const body = new URLSearchParams(await request.text());
+      const token = String(body.get("token") || "").trim();
+      if (token.length > 4096) {
+        return jsonResponse({ error: "invalid_session_token" }, 400, env);
+      }
+      const headers = new Headers(request.headers);
+      headers.delete("Content-Type");
+      headers.delete("Content-Length");
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+      return env.BOARD_STORE.get(id).fetch(new Request(request.url, {
+        method: "GET",
+        headers,
+      }));
     }
     if (url.pathname === "/api/admin/verify" && request.method === "POST") {
       const body = await parseJsonOrPlainPasswordBody(request);

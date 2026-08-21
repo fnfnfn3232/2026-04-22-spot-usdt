@@ -6787,9 +6787,8 @@
       if (!serverAuthMemoryToken) {
         serverAuthMemoryToken = String(localStorage.getItem(SERVER_AUTH_TOKEN_KEY) || "");
       }
-      localStorage.removeItem(SERVER_AUTH_TOKEN_KEY);
     } catch (_error) {
-      // Ignore migration storage failures; the in-memory/session token remains usable.
+      // Ignore storage failures; the in-memory/session token remains usable.
     }
     const APP_VIEW_STATE_KEY = "fdv_app_view_state_v1";
     const SCREEN_SETTINGS_KEY = "fdv_screen_settings_v1";
@@ -7389,7 +7388,11 @@
           // The in-memory token and HttpOnly Worker cookie remain available.
         }
         try {
-          localStorage.removeItem(SERVER_AUTH_TOKEN_KEY);
+          if (serverAuthMemoryToken) {
+            localStorage.setItem(SERVER_AUTH_TOKEN_KEY, serverAuthMemoryToken);
+          } else {
+            localStorage.removeItem(SERVER_AUTH_TOKEN_KEY);
+          }
         } catch (_error) {
           // The in-memory token and HttpOnly Worker cookie remain available.
         }
@@ -7430,7 +7433,7 @@
       }
 
       async function fetchServerAuth(path, options = {}) {
-        const { timeoutMs: requestTimeoutMs, ...fetchOptions } = options;
+        const { timeoutMs: requestTimeoutMs, skipAuthorization = false, ...fetchOptions } = options;
         const supportsAbortController = typeof AbortController === "function";
         const controller = supportsAbortController ? new AbortController() : null;
         const timeoutMs = Math.max(1000, Number(requestTimeoutMs) || 8000);
@@ -7440,7 +7443,13 @@
           headers["Content-Type"] = "application/json";
         }
         const token = getServerAuthToken();
-        if (token && !headers.Authorization && !headers.authorization && path !== "/api/login") {
+        if (
+          token
+          && !skipAuthorization
+          && !headers.Authorization
+          && !headers.authorization
+          && path !== "/api/login"
+        ) {
           headers.Authorization = `Bearer ${token}`;
         }
         let response;
@@ -7991,6 +8000,9 @@
 
       async function verifyServerSession() {
         if (!hasServerAuth() || isLocalPreview()) return true;
+        const formBody = new URLSearchParams();
+        const token = getServerAuthToken();
+        if (token) formBody.set("token", token);
         const retryDelays = [0, 350, 900];
         let lastError = null;
         for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
@@ -7999,7 +8011,10 @@
           }
           try {
             return await fetchServerAuth("/api/session", {
-              method: "GET",
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+              body: formBody.toString(),
+              skipAuthorization: true,
               timeoutMs: 8000,
             });
           } catch (error) {
