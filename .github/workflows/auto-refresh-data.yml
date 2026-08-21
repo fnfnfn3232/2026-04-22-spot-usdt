@@ -86,6 +86,7 @@ jobs:
             http_code="$(curl -sS --max-time 60 \
               -X POST \
               -H "Authorization: Bearer ${id_token}" \
+              -H "X-Market-Data-Sync: 1" \
               -H "Content-Type: application/json" \
               --data-binary @board_snapshot.json \
               -o market-data-publish-response.json \
