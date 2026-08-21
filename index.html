@@ -16471,10 +16471,11 @@
       } else {
         setViewMode("market", { replaceHistory: true });
       }
-      checkSiteLock();
+      checkSiteLock().then((authenticated) => {
+        if (authenticated) sendUsageBeacon();
+      });
       updateTopControlsVisibility();
       updateScrollControls();
-      sendUsageBeacon();
 
       if (screenSettingsMenuOrder) {
         screenSettingsMenuOrder.addEventListener("dragstart", (event) => {
