@@ -6772,16 +6772,24 @@
     const LOCK_AUTH_UNTIL_KEY = "fdv_lock_until_server_v1";
     const LOCK_EXTEND_COUNT_KEY = "fdv_lock_extend_count_server_v1";
     const SERVER_AUTH_TOKEN_KEY = "fdv_server_auth_token_v1";
+    const SERVER_AUTH_SESSION_TOKEN_KEY = "fdv_server_auth_session_token_v1";
     const MANUAL_REFRESH_LAST_KEY = "fdv_manual_refresh_last_v1";
     const ADMIN_TRAFFIC_KEY = "fdv_admin_traffic_v1";
     const USAGE_BEACON_SENT_KEY = "fdv_usage_beacon_sent_v1";
     const SERVER_AUTH_API_BASE = String(window.SERVER_AUTH_API_BASE || "").replace(/\/+$/, "");
     let serverAuthMemoryToken = "";
     try {
-      serverAuthMemoryToken = String(localStorage.getItem(SERVER_AUTH_TOKEN_KEY) || "");
-      localStorage.removeItem(SERVER_AUTH_TOKEN_KEY);
+      serverAuthMemoryToken = String(sessionStorage.getItem(SERVER_AUTH_SESSION_TOKEN_KEY) || "");
     } catch (_error) {
       serverAuthMemoryToken = "";
+    }
+    try {
+      if (!serverAuthMemoryToken) {
+        serverAuthMemoryToken = String(localStorage.getItem(SERVER_AUTH_TOKEN_KEY) || "");
+      }
+      localStorage.removeItem(SERVER_AUTH_TOKEN_KEY);
+    } catch (_error) {
+      // Ignore migration storage failures; the in-memory/session token remains usable.
     }
     const APP_VIEW_STATE_KEY = "fdv_app_view_state_v1";
     const SCREEN_SETTINGS_KEY = "fdv_screen_settings_v1";
@@ -7372,6 +7380,15 @@
       function setServerAuthToken(token) {
         serverAuthMemoryToken = String(token || "");
         try {
+          if (serverAuthMemoryToken) {
+            sessionStorage.setItem(SERVER_AUTH_SESSION_TOKEN_KEY, serverAuthMemoryToken);
+          } else {
+            sessionStorage.removeItem(SERVER_AUTH_SESSION_TOKEN_KEY);
+          }
+        } catch (_error) {
+          // The in-memory token and HttpOnly Worker cookie remain available.
+        }
+        try {
           localStorage.removeItem(SERVER_AUTH_TOKEN_KEY);
         } catch (_error) {
           // The in-memory token and HttpOnly Worker cookie remain available.
@@ -7379,7 +7396,8 @@
       }
 
       function getServerAuthTokenExpiry(token = getServerAuthToken()) {
-        const expiresAt = Number(String(token || "").split(".")[0]) * 1000;
+        const parts = String(token || "").split(".");
+        const expiresAt = Number(["v2", "v3"].includes(parts[0]) ? parts[1] : parts[0]) * 1000;
         return Number.isFinite(expiresAt) ? expiresAt : 0;
       }
 
@@ -7973,7 +7991,25 @@
 
       async function verifyServerSession() {
         if (!hasServerAuth() || isLocalPreview()) return true;
-        return fetchServerAuth("/api/session", { method: "GET", timeoutMs: 8000 });
+        const retryDelays = [0, 350, 900];
+        let lastError = null;
+        for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
+          if (retryDelays[attempt] > 0) {
+            await new Promise((resolve) => window.setTimeout(resolve, retryDelays[attempt]));
+          }
+          try {
+            return await fetchServerAuth("/api/session", {
+              method: "GET",
+              timeoutMs: 8000,
+              cache: "no-store",
+            });
+          } catch (error) {
+            lastError = error;
+            const status = Math.max(0, Math.floor(Number(error?.status) || 0));
+            if (status > 0 && status < 500) throw error;
+          }
+        }
+        throw lastError || new Error("session_verification_failed");
       }
 
       async function verifySitePassword(password) {
