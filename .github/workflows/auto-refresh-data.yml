@@ -80,17 +80,24 @@ jobs:
           set -euo pipefail
           token_response="$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=coin-board-auth-market-data")"
           id_token="$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"${token_response}")"
+          echo "Publishing $(wc -c < board_snapshot.json) bytes"
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if curl -fsS \
+            curl_exit=0
+            http_code="$(curl -sS --max-time 60 \
               -X POST \
               -H "Authorization: Bearer ${id_token}" \
               -H "Content-Type: application/json" \
               --data-binary @board_snapshot.json \
-              "${MARKET_DATA_API_URL}"; then
+              -o market-data-publish-response.json \
+              -w '%{http_code}' \
+              "${MARKET_DATA_API_URL}")" || curl_exit=$?
+            cat market-data-publish-response.json 2>/dev/null || true
+            echo
+            if [[ "${curl_exit}" -eq 0 && "${http_code}" =~ ^2 ]]; then
               echo "Protected market data publish succeeded on attempt ${attempt}"
               exit 0
             fi
-            echo "Protected market data publish failed on attempt ${attempt}"
+            echo "Protected market data publish failed on attempt ${attempt}: curl=${curl_exit}, http=${http_code}"
             sleep 20
           done
           echo "Protected market data publish failed after retries"
