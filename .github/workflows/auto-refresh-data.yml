@@ -20,7 +20,9 @@ permissions:
 
 concurrency:
   group: auto-refresh-data
-  cancel-in-progress: true
+  # A full market-data rebuild can run longer than the scheduler interval.
+  # Keep the active refresh alive instead of replacing it mid-build.
+  cancel-in-progress: false
 
 jobs:
   refresh:
