@@ -7477,6 +7477,7 @@
           if (
             response.status === 401
             && message === "auth_required"
+            && siteAuthConfirmed
             && path !== "/api/login"
             && path !== "/api/admin/verify"
           ) {
@@ -7535,7 +7536,7 @@
           const error = new Error(message);
           error.status = response.status;
           error.payload = payload;
-          if (response.status === 401 && message === "auth_required") {
+          if (response.status === 401 && message === "auth_required" && siteAuthConfirmed) {
             handleServerAuthExpired();
           }
           throw error;
@@ -16782,6 +16783,7 @@
       let bootRefreshTimer = null;
       async function runAutoRefreshTick(mode = "interval") {
         if (autoRefreshInFlight) return;
+        if (hasServerAuth() && !isLocalPreview() && !siteAuthConfirmed) return;
         if (isSiteLocked()) return;
         if (mode === "boot") {
           const now = Date.now();
