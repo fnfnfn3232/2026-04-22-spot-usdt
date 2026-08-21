@@ -8001,7 +8001,6 @@
             return await fetchServerAuth("/api/session", {
               method: "GET",
               timeoutMs: 8000,
-              cache: "no-store",
             });
           } catch (error) {
             lastError = error;
