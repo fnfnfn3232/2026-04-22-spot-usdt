@@ -12010,18 +12010,10 @@
         }
 
         siteLockCheckPromise = (async () => {
-          const until = getLockAuthUntil();
           renderLockTtl();
 
           try {
             await verifyServerSession();
-            siteAuthConfirmed = true;
-            hideSiteLock();
-            lockError.textContent = "";
-            renderLockTtl();
-            scheduleMarketChart();
-            await refreshAuthenticatedSite();
-            return true;
           } catch (error) {
             console.error(error);
             if (isServerAuthExpiredError(error)) {
@@ -12033,6 +12025,23 @@
             }
             return false;
           }
+
+          siteAuthConfirmed = true;
+          hideSiteLock();
+          lockError.textContent = "";
+          renderLockTtl();
+          scheduleMarketChart();
+
+          try {
+            await refreshAuthenticatedSite();
+          } catch (error) {
+            console.error("authenticated_site_refresh_failed", error);
+            if (isServerAuthExpiredError(error)) {
+              handleServerAuthExpired();
+              return false;
+            }
+          }
+          return true;
         })().finally(() => {
           siteLockCheckPromise = null;
         });
