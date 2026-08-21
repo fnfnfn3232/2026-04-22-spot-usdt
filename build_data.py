@@ -2062,6 +2062,24 @@ def apply_futures_underlying_market_data(
         )
 
 
+FUTURES_SPOT_CAP_SOURCES = {
+    "futures_underlying_upbit",
+    "futures_underlying_bithumb",
+    "futures_underlying_binance",
+    "futures_underlying_coinbase",
+}
+
+
+def has_futures_spot_market_cap(row: dict) -> bool:
+    return (
+        str(row.get("capSource") or "") in FUTURES_SPOT_CAP_SOURCES
+        and (
+            to_float(row.get("marketCapUsd")) is not None
+            or to_float(row.get("marketCapKrw")) is not None
+        )
+    )
+
+
 def pick_first_candidate_with_market_signal(candidate_rows: list[dict]) -> dict | None:
     for candidate in candidate_rows:
         has_market_cap = to_float(candidate.get("marketCapUsd")) is not None or to_float(candidate.get("marketCapKrw")) is not None
@@ -2737,6 +2755,9 @@ def apply_futures_external_market_cap_overrides(
     candidates_by_symbol: dict[str, list[dict]],
 ) -> None:
     for row in rows:
+        if has_futures_spot_market_cap(row):
+            continue
+
         candidate_rows = [
             candidate_row
             for symbol in row_symbols(row)
@@ -2799,6 +2820,9 @@ def apply_previous_futures_coinmarketcap_fallback(
     )
 
     for row in rows:
+        if has_futures_spot_market_cap(row):
+            continue
+
         contract_id = str(row.get("contractId") or row.get("pair") or "").strip().upper()
         previous_row = previous_by_contract.get(contract_id)
         if previous_row is None:
@@ -3906,9 +3930,9 @@ def make_payload(previous_payload: dict | None = None) -> dict:
     apply_binance_korean_name_fills(binance_rows, upbit_rows, bithumb_rows)
 
     spot_reference_groups = [
-        ("binance", binance_rows),
         ("upbit", upbit_rows),
         ("bithumb", bithumb_rows),
+        ("binance", binance_rows),
         ("coinbase", coinbase_rows),
     ]
     known_symbols = {
@@ -3953,12 +3977,7 @@ def make_payload(previous_payload: dict | None = None) -> dict:
     )
     apply_futures_underlying_market_data(
         futures_rows.get("coinbase", []),
-        [
-            ("coinbase", coinbase_rows),
-            ("binance", binance_rows),
-            ("upbit", upbit_rows),
-            ("bithumb", bithumb_rows),
-        ],
+        spot_reference_groups,
         coingecko_supply_candidates,
     )
     futures_missing_cap_symbols = {
@@ -3981,12 +4000,7 @@ def make_payload(previous_payload: dict | None = None) -> dict:
             )
             apply_futures_underlying_market_data(
                 futures_rows.get("coinbase", []),
-                [
-                    ("coinbase", coinbase_rows),
-                    ("binance", binance_rows),
-                    ("upbit", upbit_rows),
-                    ("bithumb", bithumb_rows),
-                ],
+                spot_reference_groups,
                 futures_market_candidates,
             )
         except Exception as error:  # noqa: BLE001
