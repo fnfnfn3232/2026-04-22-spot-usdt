@@ -38,6 +38,25 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Load previous protected snapshot
+        env:
+          MARKET_DATA_API_URL: "https://coin-board-auth.dlatl20000.workers.dev/api/market-data"
+        run: |
+          set -euo pipefail
+          token_response="$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=coin-board-auth-market-data")"
+          id_token="$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"${token_response}")"
+          if curl -fsS \
+            -H "Authorization: Bearer ${id_token}" \
+            -H "X-Market-Data-Sync: 1" \
+            "${MARKET_DATA_API_URL}" \
+            -o board_snapshot.json; then
+            python -c 'import json; payload=json.load(open("board_snapshot.json", encoding="utf-8")); assert isinstance(payload.get("futures"), dict)'
+            echo "Previous protected snapshot loaded"
+          else
+            rm -f board_snapshot.json
+            echo "Previous protected snapshot unavailable; continuing without it"
+          fi
+
       - name: Rebuild data (retry)
         run: |
           set -e

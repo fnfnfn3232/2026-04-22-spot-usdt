@@ -3616,6 +3616,14 @@ export class BoardStore {
       return this.handleMembersAdmin(request, url);
     }
 
+    if (
+      request.method === "GET"
+      && url.pathname === "/api/market-data"
+      && request.headers.get("X-Market-Data-Sync") === "1"
+    ) {
+      return this.recordApiResponse(await this.handleMarketDataRequest(request, url));
+    }
+
     if (request.method === "POST" && url.pathname === "/api/market-data") {
       if (request.headers.get("X-Market-Data-Sync") !== "1") {
         return jsonResponse({ error: "market_data_sync_required" }, 403, this.env);
@@ -3922,7 +3930,11 @@ export default {
     if (request.method === "OPTIONS") return optionsResponse(request, env);
 
     const url = new URL(request.url);
-    if (url.pathname === "/api/market-data" && request.method === "POST") {
+    if (
+      url.pathname === "/api/market-data"
+      && ["GET", "POST"].includes(request.method)
+      && request.headers.get("X-Market-Data-Sync") === "1"
+    ) {
       const authResponse = await requireGithubOidc(request, env);
       if (authResponse) return authResponse;
       if (!env.BOARD_STORE) return jsonResponse({ error: "market_data_storage_not_configured" }, 500, env);

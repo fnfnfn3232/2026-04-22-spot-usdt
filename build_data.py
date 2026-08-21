@@ -2487,6 +2487,7 @@ def fetch_coinmarketcap_market_candidates(target_symbols: set[str]) -> dict[str,
     candidates: dict[str, list[dict]] = {}
     sorted_symbols = sorted(target_symbols)
     seen_source_ids: set[str] = set()
+    batch_errors: list[str] = []
     for offset in range(0, len(sorted_symbols), COINMARKETCAP_SYMBOL_BATCH_SIZE):
         symbol_batch = sorted_symbols[offset : offset + COINMARKETCAP_SYMBOL_BATCH_SIZE]
         query = urllib.parse.urlencode(
@@ -2496,9 +2497,22 @@ def fetch_coinmarketcap_market_candidates(target_symbols: set[str]) -> dict[str,
                 "skip_invalid": "true",
             }
         )
-        payload = fetch_json(f"{COINMARKETCAP_QUOTES_ENDPOINT}?{query}", retries=4, pause=3.0)
+        try:
+            payload = fetch_json(
+                f"{COINMARKETCAP_QUOTES_ENDPOINT}?{query}",
+                retries=4,
+                pause=3.0,
+            )
+        except Exception as error:  # noqa: BLE001
+            batch_errors.append(
+                f"{symbol_batch[0]}-{symbol_batch[-1]}:{error}"
+            )
+            continue
         items = payload.get("data") if isinstance(payload, dict) else None
         if not isinstance(items, list):
+            batch_errors.append(
+                f"{symbol_batch[0]}-{symbol_batch[-1]}:invalid_response"
+            )
             continue
 
         for item in items:
@@ -2559,6 +2573,10 @@ def fetch_coinmarketcap_market_candidates(target_symbols: set[str]) -> dict[str,
             }
             candidates.setdefault(symbol, []).append(candidate)
 
+    if not candidates and batch_errors:
+        raise RuntimeError(
+            "coinmarketcap_all_batches_failed:" + " | ".join(batch_errors)
+        )
     return candidates
 
 
@@ -2751,6 +2769,66 @@ def apply_futures_external_market_cap_overrides(
             f"{candidate.get('symbol') or ''}:{candidate.get('sourceId') or ''}"
         )
         row["supplyDetail"] = f"futures_supply:{candidate.get('supplyDetail') or ''}"
+        row["marketCapStale"] = False
+        row["marketCapUpdatedAt"] = int(time.time())
+        row["status"] = "ok"
+
+
+def apply_previous_futures_coinmarketcap_fallback(
+    rows: list[dict],
+    previous_rows: list[dict],
+    *,
+    previous_generated_at: int | float | None = None,
+) -> None:
+    previous_by_contract = {
+        str(row.get("contractId") or row.get("pair") or "").strip().upper(): row
+        for row in previous_rows
+        if str(row.get("contractId") or row.get("pair") or "").strip()
+    }
+    previous_by_symbol = build_rows_by_symbol(previous_rows)
+    market_fields = (
+        "marketCapUsd",
+        "marketCapKrw",
+        "marketCapRank",
+        "circulatingSupply",
+        "totalSupply",
+        "circulatingRatio",
+        "fdvUsd",
+        "fdvKrw",
+        "supplyDetail",
+    )
+
+    for row in rows:
+        contract_id = str(row.get("contractId") or row.get("pair") or "").strip().upper()
+        previous_row = previous_by_contract.get(contract_id)
+        if previous_row is None:
+            symbol_candidates = [
+                candidate
+                for symbol in row_symbols(row)
+                for candidate in previous_by_symbol.get(symbol, [])
+            ]
+            if len(symbol_candidates) == 1:
+                previous_row = symbol_candidates[0]
+        if previous_row is None:
+            continue
+
+        previous_source = str(previous_row.get("capSource") or "")
+        if not previous_source.startswith("futures_underlying_coinmarketcap"):
+            continue
+        if to_float(previous_row.get("marketCapUsd")) is None:
+            continue
+
+        for field in market_fields:
+            row[field] = previous_row.get(field)
+        row["capSource"] = "futures_underlying_coinmarketcap_stale"
+        row["capSourceDetail"] = (
+            f"{previous_row.get('capSourceDetail') or 'coinmarketcap_previous'}"
+            f"|previous_snapshot:{int(previous_generated_at or 0)}"
+        )
+        row["marketCapStale"] = True
+        row["marketCapUpdatedAt"] = (
+            previous_row.get("marketCapUpdatedAt") or previous_generated_at
+        )
         row["status"] = "ok"
 
 
@@ -3913,6 +3991,14 @@ def make_payload(previous_payload: dict | None = None) -> dict:
             )
         except Exception as error:  # noqa: BLE001
             refresh_issues["futures_coingecko"] = f"fetch_failed:{error}"
+
+    previous_generated_at = to_float((previous_payload or {}).get("generatedAt"))
+    for exchange_name, rows in futures_rows.items():
+        apply_previous_futures_coinmarketcap_fallback(
+            rows,
+            clone_previous_futures_rows(previous_payload, exchange_name),
+            previous_generated_at=previous_generated_at,
+        )
 
     futures_symbols = {
         str(row.get("symbol") or "").upper()
