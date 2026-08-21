@@ -100,5 +100,6 @@ jobs:
             echo "Protected market data publish failed on attempt ${attempt}: curl=${curl_exit}, http=${http_code}"
             sleep 20
           done
-          echo "Protected market data publish failed after retries"
+          response_summary="$(tr '\n' ' ' < market-data-publish-response.json 2>/dev/null | head -c 500 || true)"
+          echo "::error title=Protected market data publish failed::curl=${curl_exit}, http=${http_code}, response=${response_summary}"
           exit 1

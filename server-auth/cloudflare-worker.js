@@ -3941,11 +3941,21 @@ export default {
       const id = env.BOARD_STORE.idFromName("free-board");
       const headers = new Headers(request.headers);
       headers.set("X-Market-Data-Sync", "1");
-      return env.BOARD_STORE.get(id).fetch(new Request(request.url, {
+      const requestInit = {
         method: request.method,
         headers,
-        body: request.body,
-      }));
+      };
+      if (request.method === "POST") {
+        requestInit.body = await request.arrayBuffer();
+      }
+      try {
+        return await env.BOARD_STORE.get(id).fetch(new Request(request.url, requestInit));
+      } catch (error) {
+        return jsonResponse({
+          error: "market_data_forward_failed",
+          message: String(error?.message || error || "unknown_error").slice(0, 300),
+        }, 500, env);
+      }
     }
 
     if (request.method === "GET" && url.pathname.startsWith("/api/board/media/")) {
