@@ -6879,6 +6879,7 @@
     const LOCK_EXTEND_MAX = 3;
     const MANUAL_REFRESH_COOLDOWN_MS = 30 * 1000;
     const LIVE_MARKET_REFRESH_MS = 10 * 60 * 1000;
+    const LIVE_PRICE_RECONNECT_MAX_MS = 30 * 1000;
     const BOOT_REFRESH_THROTTLE_MS = 20 * 1000;
     const BOOT_REFRESH_LAST_KEY = "fdv_boot_refresh_last_v5";
     const MARKET_SNAPSHOT_GENERATED_AT_KEY = "fdv_market_snapshot_generated_at_v1";
@@ -10782,7 +10783,7 @@
                           </div>`
                         : "-";
                       return `
-                        <tr>
+                        <tr data-live-price-row="futures" data-live-exchange="${escapeAttr(futuresExchange)}" data-live-product="${escapeAttr(row.contractId || row.pair || "")}">
                           <td class="futures-rank">${rank}</td>
                           <td class="futures-contract">
                             <strong>${escapeHtml(row.contractId || row.pair || "-")}</strong>
@@ -10797,8 +10798,8 @@
                             <span>${escapeHtml(row.quoteAsset || "USD")} 결제</span>
                           </td>
                           <td class="futures-price">
-                            <strong>${escapeHtml(price.main || TEXT.unknown)}</strong>
-                            <span>${escapeHtml(price.sub || TEXT.noPrice)}</span>
+                            <strong data-live-price-main>${escapeHtml(price.main || TEXT.unknown)}</strong>
+                            <span data-live-price-sub>${escapeHtml(price.sub || TEXT.noPrice)}</span>
                           </td>
                           <td class="futures-cap">
                             <strong>${escapeHtml(cap.main || TEXT.unknown)}</strong>
@@ -10817,6 +10818,7 @@
             ` : `<p class="futures-empty">${data.generatedAt ? "조건에 맞는 선물 상품이 없습니다." : "선물 데이터를 준비 중입니다."}</p>`}
           </div>
         `;
+        syncLivePriceStream();
       }
 
       function normalizeAuditSymbol(value) {
@@ -11879,7 +11881,6 @@
         siteLock.classList.add("hidden");
         setLockCapsWarning(false);
         stopEmailOtpTimer();
-        stopSignupOtpTimer();
       }
 
       function getLockAuthUntil() {
@@ -14632,6 +14633,287 @@
         }
       }
 
+      let livePriceSocket = null;
+      let livePriceTarget = null;
+      let livePriceSignature = "";
+      let livePriceGeneration = 0;
+      let livePriceReconnectTimer = 0;
+      let livePriceReconnectAttempts = 0;
+      let livePriceFlushFrame = 0;
+      const livePricePendingEntries = new Set();
+
+      function liveSpotProductId(row, exchange) {
+        const pair = String(row?.pair || "").split("·", 1)[0].trim().toUpperCase();
+        const pairParts = pair.split("/").map((part) => part.trim()).filter(Boolean);
+        const base = pairParts[0] || String(row?.symbol || "").trim().toUpperCase();
+        const quote = pairParts[1] || (exchange === "binance" ? "USDT" : exchange === "coinbase" ? "USD" : "KRW");
+        if (!base) return "";
+        if (exchange === "upbit") return `${quote}-${base}`;
+        if (exchange === "bithumb") return `${base}_${quote}`;
+        if (exchange === "coinbase") return `${base}-${quote}`;
+        return `${base}${quote}`;
+      }
+
+      function normalizedLiveProduct(value) {
+        return String(value || "").trim().toUpperCase();
+      }
+
+      function buildLivePriceTarget() {
+        let kind = "";
+        let exchange = "";
+        let root = null;
+        let modelRows = [];
+
+        if (state.viewMode === "market") {
+          kind = "spot";
+          exchange = state.board === "triple" ? "bithumb" : state.board;
+          root = tableBody;
+          modelRows = data.boards?.[exchange] || [];
+        } else if (state.viewMode === "futures") {
+          kind = "futures";
+          exchange = futuresExchange;
+          root = newsPanel;
+          modelRows = data.futures?.[exchange] || [];
+        }
+
+        if (!root || !["binance", "upbit", "bithumb", "coinbase"].includes(exchange)) return null;
+        if (kind === "futures" && exchange !== "binance") return null;
+
+        const selector = `tr[data-live-price-row="${kind}"][data-live-exchange="${exchange}"]`;
+        const rowElements = Array.from(root.querySelectorAll(selector));
+        if (!rowElements.length) return null;
+
+        const productForRow = (row) => kind === "spot"
+          ? liveSpotProductId(row, exchange)
+          : normalizedLiveProduct(row.contractId || row.pair);
+        const modelsByProduct = new Map(modelRows.map((row) => [normalizedLiveProduct(productForRow(row)), row]));
+        const entries = new Map();
+        rowElements.forEach((element) => {
+          const product = normalizedLiveProduct(element.dataset.liveProduct);
+          const row = modelsByProduct.get(product);
+          if (!product || !row) return;
+          entries.set(product, { element, row, kind, exchange });
+        });
+        if (!entries.size) return null;
+
+        const products = Array.from(entries.keys()).sort();
+        return {
+          kind,
+          exchange,
+          entries,
+          products,
+          signature: `${kind}:${exchange}:${products.join(",")}`,
+        };
+      }
+
+      function closeLivePriceSocket(resetTarget = true) {
+        livePriceGeneration += 1;
+        window.clearTimeout(livePriceReconnectTimer);
+        livePriceReconnectTimer = 0;
+        if (livePriceSocket) {
+          livePriceSocket.onopen = null;
+          livePriceSocket.onmessage = null;
+          livePriceSocket.onerror = null;
+          livePriceSocket.onclose = null;
+          try {
+            livePriceSocket.close(1000, "view changed");
+          } catch (_error) {
+            // The socket may already be closed.
+          }
+        }
+        livePriceSocket = null;
+        if (resetTarget) {
+          livePriceTarget = null;
+          livePriceSignature = "";
+          livePriceReconnectAttempts = 0;
+        }
+      }
+
+      function livePriceSocketUrl(target) {
+        if (target.exchange === "binance") {
+          const host = target.kind === "futures" ? "wss://fstream.binance.com" : "wss://stream.binance.com:9443";
+          const streams = target.products.map((product) => `${product.toLowerCase()}@bookTicker`).join("/");
+          return `${host}/stream?streams=${streams}`;
+        }
+        if (target.exchange === "upbit") return "wss://api.upbit.com/websocket/v1";
+        if (target.exchange === "bithumb") return "wss://pubwss.bithumb.com/pub/ws";
+        if (target.exchange === "coinbase") return "wss://advanced-trade-ws.coinbase.com";
+        return "";
+      }
+
+      function queueLivePriceEntry(entry) {
+        livePricePendingEntries.add(entry);
+        if (livePriceFlushFrame) return;
+        livePriceFlushFrame = window.requestAnimationFrame(() => {
+          livePriceFlushFrame = 0;
+          livePricePendingEntries.forEach((pendingEntry) => {
+            const { element, row, kind } = pendingEntry;
+            if (!element?.isConnected) return;
+            const display = priceDisplay(row, kind === "futures" ? { minimumUsdFractionDigits: 5 } : {});
+            const main = element.querySelector("[data-live-price-main]");
+            const sub = element.querySelector("[data-live-price-sub]");
+            if (main) main.textContent = display.main || TEXT.unknown;
+            if (sub) sub.textContent = display.sub || TEXT.noPrice;
+          });
+          livePricePendingEntries.clear();
+        });
+      }
+
+      function applyRealtimePrice(product, value) {
+        const numericPrice = toPositiveNumber(value);
+        const target = livePriceTarget;
+        const entry = target?.entries.get(normalizedLiveProduct(product));
+        if (numericPrice === null || !entry) return;
+
+        const fx = toPositiveNumber(data.fxUsdKrw);
+        if (entry.exchange === "upbit" || entry.exchange === "bithumb") {
+          entry.row.priceKrw = numericPrice;
+          if (fx !== null) entry.row.priceUsd = numericPrice / fx;
+        } else {
+          entry.row.priceUsd = numericPrice;
+          if (fx !== null) entry.row.priceKrw = numericPrice * fx;
+        }
+        entry.row.livePriceUpdatedAt = Date.now();
+        queueLivePriceEntry(entry);
+      }
+
+      async function decodeLivePriceMessage(messageData) {
+        if (typeof messageData === "string") return messageData;
+        if (messageData instanceof Blob) return messageData.text();
+        if (messageData instanceof ArrayBuffer) return new TextDecoder().decode(messageData);
+        if (ArrayBuffer.isView(messageData)) return new TextDecoder().decode(messageData);
+        return "";
+      }
+
+      async function handleLivePriceMessage(target, messageData) {
+        let payload;
+        try {
+          const text = await decodeLivePriceMessage(messageData);
+          if (!text) return;
+          payload = JSON.parse(text);
+        } catch (_error) {
+          return;
+        }
+
+        if (target.exchange === "binance") {
+          const ticker = payload?.data || payload;
+          const bid = toPositiveNumber(ticker?.b);
+          const ask = toPositiveNumber(ticker?.a);
+          const price = bid !== null && ask !== null ? (bid + ask) / 2 : bid ?? ask;
+          applyRealtimePrice(ticker?.s, price);
+          return;
+        }
+
+        if (target.exchange === "upbit") {
+          applyRealtimePrice(payload?.code, payload?.trade_price);
+          return;
+        }
+
+        if (target.exchange === "bithumb") {
+          applyRealtimePrice(payload?.content?.symbol, payload?.content?.closePrice);
+          return;
+        }
+
+        if (target.exchange === "coinbase") {
+          const events = Array.isArray(payload?.events) ? payload.events : [];
+          events.forEach((event) => {
+            const tickers = Array.isArray(event?.tickers) ? event.tickers : [];
+            tickers.forEach((ticker) => applyRealtimePrice(ticker?.product_id, ticker?.price));
+          });
+        }
+      }
+
+      function scheduleLivePriceReconnect(target, generation) {
+        if (generation !== livePriceGeneration || document.hidden || !navigator.onLine) return;
+        const baseDelay = Math.min(1000 * (2 ** livePriceReconnectAttempts), LIVE_PRICE_RECONNECT_MAX_MS);
+        livePriceReconnectAttempts += 1;
+        livePriceReconnectTimer = window.setTimeout(() => {
+          if (generation !== livePriceGeneration || livePriceSignature !== target.signature) return;
+          connectLivePriceTarget(target, generation);
+        }, baseDelay + Math.floor(Math.random() * 500));
+      }
+
+      function connectLivePriceTarget(target, generation) {
+        const url = livePriceSocketUrl(target);
+        if (!url || generation !== livePriceGeneration) return;
+
+        let socket;
+        try {
+          socket = new WebSocket(url);
+        } catch (_error) {
+          scheduleLivePriceReconnect(target, generation);
+          return;
+        }
+        livePriceSocket = socket;
+        socket.binaryType = "arraybuffer";
+        socket.onopen = () => {
+          if (generation !== livePriceGeneration) return;
+          livePriceReconnectAttempts = 0;
+          if (target.exchange === "upbit") {
+            socket.send(JSON.stringify([
+              { ticket: `coin-live-${Date.now()}` },
+              { type: "ticker", codes: target.products },
+              { format: "DEFAULT" },
+            ]));
+          } else if (target.exchange === "bithumb") {
+            socket.send(JSON.stringify({ type: "ticker", symbols: target.products, tickTypes: ["24H"] }));
+          } else if (target.exchange === "coinbase") {
+            socket.send(JSON.stringify({ type: "subscribe", channel: "ticker", product_ids: target.products }));
+            socket.send(JSON.stringify({ type: "subscribe", channel: "heartbeats", product_ids: target.products }));
+          }
+        };
+        socket.onmessage = (event) => {
+          if (generation !== livePriceGeneration) return;
+          handleLivePriceMessage(target, event.data);
+        };
+        socket.onerror = () => {
+          try {
+            socket.close();
+          } catch (_error) {
+            // Closing is best-effort; the 10-minute snapshot remains visible.
+          }
+        };
+        socket.onclose = () => {
+          if (livePriceSocket === socket) livePriceSocket = null;
+          scheduleLivePriceReconnect(target, generation);
+        };
+      }
+
+      function syncLivePriceStream() {
+        if (document.hidden || !navigator.onLine) {
+          closeLivePriceSocket();
+          return;
+        }
+        const nextTarget = buildLivePriceTarget();
+        if (!nextTarget) {
+          closeLivePriceSocket();
+          return;
+        }
+        if (nextTarget.signature === livePriceSignature) {
+          livePriceTarget = nextTarget;
+          if (!livePriceSocket && !livePriceReconnectTimer) {
+            connectLivePriceTarget(nextTarget, livePriceGeneration);
+          }
+          return;
+        }
+
+        closeLivePriceSocket();
+        livePriceTarget = nextTarget;
+        livePriceSignature = nextTarget.signature;
+        const generation = livePriceGeneration;
+        connectLivePriceTarget(nextTarget, generation);
+      }
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+          closeLivePriceSocket();
+        } else {
+          syncLivePriceStream();
+        }
+      });
+      window.addEventListener("online", syncLivePriceStream);
+      window.addEventListener("offline", () => closeLivePriceSocket());
+
       function getDataSourceCandidates() {
         const ts = Date.now();
         return [`./data.js?ts=${ts}`];
@@ -14927,6 +15209,7 @@
         if (options.writeHistory !== false) {
           writeAppHistoryState(Boolean(options.replaceHistory));
         }
+        window.setTimeout(syncLivePriceStream, 0);
       }
 
       function resetFreeBoardToList() {
@@ -15195,6 +15478,7 @@
         board,
         new Map(getBoardRows(board).map((item) => [getComparableSymbol(item), item])),
       ]));
+      const liveExchange = state.board === "triple" ? "bithumb" : state.board;
 
       tableBody.innerHTML = rows
         .map((row, index) => {
@@ -15227,7 +15511,7 @@
               }).join("")}</span>`
             : "";
           return `
-            <tr>
+            <tr data-live-price-row="spot" data-live-exchange="${escapeAttr(liveExchange)}" data-live-product="${escapeAttr(liveSpotProductId(row, liveExchange))}">
               <td class="rank" data-label="${TEXT.thRank}">${rank}</td>
               <td data-label="${TEXT.thCoin}">
                 <div class="coin-title-line">
@@ -15238,8 +15522,8 @@
               </td>
               <td data-label="${TEXT.thSymbol}"><span class="chip">${escapeHtml(getDisplaySymbol(row))}</span></td>
               <td data-label="${TEXT.thPrice}">
-                <div class="price-main">${escapeHtml(price.main || TEXT.unknown)}</div>
-                <div class="price-sub">${escapeHtml(price.sub || TEXT.noPrice)}</div>
+                <div class="price-main" data-live-price-main>${escapeHtml(price.main || TEXT.unknown)}</div>
+                <div class="price-sub" data-live-price-sub>${escapeHtml(price.sub || TEXT.noPrice)}</div>
               </td>
               <td data-label="${TEXT.thCap}">
                 <div class="cap-main">${escapeHtml(cap.main || TEXT.unknown)}</div>
@@ -15272,6 +15556,7 @@
 
       renderTable(pageRows);
       renderPagination(totalPages);
+      syncLivePriceStream();
 
         Array.from(tabs.querySelectorAll(".tab")).forEach((button) => {
           button.classList.toggle("active", button.dataset.board === state.board);
