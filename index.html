@@ -1595,28 +1595,6 @@
         flex: 0 0 auto;
       }
 
-      .futures-sort {
-        display: flex;
-        flex: 0 0 auto;
-        gap: 6px;
-      }
-
-      .futures-sort button {
-        min-height: 38px;
-        padding: 0 13px;
-        border: 1px solid var(--line);
-        background: transparent;
-        color: var(--muted);
-        font-size: 13px;
-        font-weight: 800;
-      }
-
-      .futures-sort button.active {
-        border-color: var(--accent);
-        background: var(--accent-soft);
-        color: var(--accent);
-      }
-
       .futures-meta,
       .futures-note {
         color: var(--muted);
@@ -1679,6 +1657,24 @@
 
       .futures-cap {
         width: 17%;
+      }
+
+      .futures-cap-sort {
+        min-height: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        font-weight: inherit;
+        text-align: left;
+      }
+
+      .futures-cap-sort:hover,
+      .futures-cap-sort:focus-visible {
+        background: transparent;
+        color: var(--accent);
       }
 
       .futures-listings {
@@ -4330,14 +4326,6 @@
 
         .futures-search {
           width: 100%;
-        }
-
-        .futures-sort {
-          width: 100%;
-        }
-
-        .futures-sort button {
-          flex: 1 1 0;
         }
 
         .futures-meta {
@@ -10715,10 +10703,6 @@
                 <button type="submit">검색</button>
                 ${futuresQuery ? `<button type="button" data-futures-clear>초기화</button>` : ""}
               </form>
-              <div class="futures-sort" aria-label="기초자산 시총 정렬">
-                <button class="${futuresSortDirection === "desc" ? "active" : ""}" type="button" data-futures-sort="desc" aria-pressed="${futuresSortDirection === "desc"}">시총 높은 순</button>
-                <button class="${futuresSortDirection === "asc" ? "active" : ""}" type="button" data-futures-sort="asc" aria-pressed="${futuresSortDirection === "asc"}">시총 낮은 순</button>
-              </div>
               <p class="futures-meta">총 ${formatNumber(filteredRows.length, 0)}개 · 시총 확인 ${formatNumber(withCap, 0)}개 · ${futuresPage} / ${totalPages} 페이지</p>
             </div>
             <p class="futures-note">무기한 코인 선물만 표시합니다. 시총은 선물 계약 자체가 아니라 해당 기초 코인의 현물 시총이며, 월물·분기물·비암호화폐 상품은 제외합니다.</p>
@@ -10732,7 +10716,11 @@
                       <th class="futures-underlying">기초 코인</th>
                       <th class="futures-type">구분</th>
                       <th class="futures-price">선물 가격</th>
-                      <th class="futures-cap">기초자산 시총 ${futuresSortDirection === "asc" ? "↑" : "↓"}</th>
+                      <th class="futures-cap" aria-sort="${futuresSortDirection === "asc" ? "ascending" : "descending"}">
+                        <button class="futures-cap-sort" type="button" data-futures-sort title="${futuresSortDirection === "desc" ? "클릭하면 낮은 시총순으로 정렬" : "클릭하면 높은 시총순으로 정렬"}">
+                          시총 ${futuresSortDirection === "asc" ? "↑" : "↓"}
+                        </button>
+                      </th>
                       <th class="futures-listings">상장 거래소</th>
                     </tr>
                   </thead>
@@ -16103,7 +16091,7 @@
 
         const futuresSortButton = clickTarget.closest("[data-futures-sort]");
         if (futuresSortButton) {
-          futuresSortDirection = futuresSortButton.dataset.futuresSort === "asc" ? "asc" : "desc";
+          futuresSortDirection = futuresSortDirection === "desc" ? "asc" : "desc";
           futuresPage = 1;
           renderFuturesPanel();
           writeAppHistoryState(true);
