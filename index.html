@@ -5777,70 +5777,38 @@
         min-width: 0;
       }
 
-      .hero-kicker {
-        display: inline-flex;
+      .hero-brand-lockup {
+        display: flex;
         align-items: center;
-        gap: 9px;
-        color: #3567ff;
-        font-size: 12px;
-        font-weight: 800;
-        letter-spacing: 0.08em;
+        gap: 22px;
       }
 
-      .hero-kicker::before {
-        width: 28px;
-        height: 1px;
+      .hero-brand-mark {
+        display: grid;
+        flex: 0 0 auto;
+        grid-template-columns: repeat(2, 22px);
+        gap: 6px;
+      }
+
+      .hero-brand-mark span {
+        width: 22px;
+        height: 22px;
+        border-radius: 5px;
         background: #3567ff;
-        content: "";
+      }
+
+      .hero-brand-mark span:nth-child(2),
+      .hero-brand-mark span:nth-child(3) {
+        background: #7d9cff;
       }
 
       .hero h1 {
-        max-width: 590px;
-        margin: 24px 0 22px;
+        margin: 0;
         color: #101f38;
-        font-size: 58px;
+        font-size: 54px;
         font-weight: 850;
-        line-height: 1.12;
+        line-height: 1;
         letter-spacing: 0;
-      }
-
-      .hero-lead {
-        max-width: 540px;
-        color: #637189;
-        font-size: 17px;
-        line-height: 1.8;
-      }
-
-      .hero-actions {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-top: 34px;
-      }
-
-      .hero-primary,
-      .hero-secondary {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 48px;
-        padding: 0 20px;
-        border: 1px solid #3567ff;
-        border-radius: 4px;
-        font-size: 14px;
-        font-weight: 750;
-        text-decoration: none;
-        cursor: pointer;
-      }
-
-      .hero-primary {
-        background: #3567ff;
-        color: #ffffff;
-      }
-
-      .hero-secondary {
-        background: #ffffff;
-        color: #274dbf;
       }
 
       .hero > .market-only {
@@ -6176,7 +6144,7 @@
         }
 
         .hero h1 {
-          font-size: 48px;
+          font-size: 46px;
         }
 
         .lock-ttl-wrap {
@@ -6220,23 +6188,23 @@
         }
 
         .hero h1 {
-          margin-top: 18px;
-          font-size: 38px;
-          line-height: 1.18;
+          font-size: 36px;
+          line-height: 1;
         }
 
-        .hero-lead {
-          font-size: 15px;
+        .hero-brand-lockup {
+          gap: 16px;
         }
 
-        .hero-actions {
-          align-items: stretch;
-          flex-direction: column;
+        .hero-brand-mark {
+          grid-template-columns: repeat(2, 17px);
+          gap: 5px;
         }
 
-        .hero-primary,
-        .hero-secondary {
-          width: 100%;
+        .hero-brand-mark span {
+          width: 17px;
+          height: 17px;
+          border-radius: 4px;
         }
 
         .hero > .market-only {
@@ -6320,9 +6288,9 @@
   </div>
   <header class="intel-header">
     <div class="intel-header-inner">
-      <button class="intel-brand" id="brandHomeButton" type="button" aria-label="BLOCKSCOPE 홈">
+      <button class="intel-brand" id="brandHomeButton" type="button" aria-label="블록스코프 홈">
         <span class="intel-brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
-        <span>BLOCKSCOPE</span>
+        <span>블록스코프</span>
       </button>
       <div class="view-switch" id="viewSwitch">
         <button class="view-link" id="marketToggleBtn" type="button" data-view-nav="market"></button>
@@ -6345,12 +6313,9 @@
     <section class="panel hero">
       <div class="title-row">
         <div class="title-left">
-          <div class="hero-kicker">DIGITAL ASSET INTELLIGENCE</div>
-          <h1 id="title"></h1>
-          <p class="hero-lead">업비트, 빗썸, 바이낸스, 코인베이스의 시총과 유통 정보를 한 화면에서 비교하고 뉴스, 랭킹, 선물 데이터까지 이어서 확인합니다.</p>
-          <div class="hero-actions">
-            <a class="hero-primary" href="#marketChartSection">시장 차트 보기</a>
-            <button class="hero-secondary board-access-hidden" id="heroBoardButton" type="button">게시판 열기</button>
+          <div class="hero-brand-lockup">
+            <span class="hero-brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+            <h1 id="title"></h1>
           </div>
           <div class="auto-strip-slot title-status-slot market-only" id="titleStatusSlot"></div>
         </div>
@@ -6896,7 +6861,7 @@
     const METEORA_SYMBOL = "MET";
 
     const TEXT = {
-        title: "흩어진 시장 정보를 하나의 시야로.",
+        title: "블록스코프",
       defaultDescription: "\uAC70\uB798\uC18C\uBCC4 \uC0C1\uC7A5 \uCF54\uC778\uACFC \uC2DC\uCD1D \uB370\uC774\uD130\uB97C \uC815\uC801 \uD30C\uC77C\uB85C \uC800\uC7A5\uD574 \uB450\uACE0 \uD45C\uC2DC\uD569\uB2C8\uB2E4.",
       statLabelBinance: "\uBC14\uC774\uB0B8\uC2A4 USDT",
       statLabelUpbit: "\uC5C5\uBE44\uD2B8 KRW",
