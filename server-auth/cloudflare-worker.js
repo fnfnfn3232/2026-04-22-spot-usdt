@@ -44,6 +44,16 @@ const BOARD_MEDIA_CHUNK_BYTES = 1024 * 1024;
 const BOARD_MEDIA_R2_CHUNK_BYTES = 8 * 1024 * 1024;
 const BOARD_MEDIA_R2_PARALLEL_CHUNKS = 4;
 const BOARD_MEDIA_R2_KEY_PREFIX = "free-board-media";
+const BOARD_INLINE_MEDIA_TYPES = new Map([
+  ["image/jpeg", [".jpg", ".jpeg"]],
+  ["image/png", [".png"]],
+  ["image/gif", [".gif"]],
+  ["image/webp", [".webp"]],
+  ["image/avif", [".avif"]],
+  ["video/mp4", [".mp4"]],
+  ["video/webm", [".webm"]],
+  ["video/ogg", [".ogv", ".ogg"]],
+]);
 const BACKUP_SCHEMA_VERSION = 1;
 const BACKUP_DATABASE_PREFIX = "database/";
 const BACKUP_MEDIA_PREFIX = "media/";
@@ -146,18 +156,29 @@ function jsonResponse(body, status = 200, env = {}) {
   });
 }
 
-function encodeContentDispositionFilename(fileName) {
-  const safeName = cleanBoardText(fileName, 180).replace(/[\\/:*?"<>|]/g, "_") || "attachment";
-  return `attachment; filename*=UTF-8''${encodeURIComponent(safeName)}`;
+function encodeContentDispositionFilename(fileName, disposition = "attachment") {
+  const safeName = cleanBoardMediaFileName(fileName);
+  return `${disposition}; filename*=UTF-8''${encodeURIComponent(safeName)}`;
+}
+
+function getSafeInlineBoardMediaContentType(media) {
+  const contentType = normalizeBoardMediaContentType(media?.contentType);
+  const extensions = BOARD_INLINE_MEDIA_TYPES.get(contentType);
+  if (!extensions) return "";
+  const fileName = cleanBoardMediaFileName(media?.fileName).toLowerCase();
+  return extensions.some((extension) => fileName.endsWith(extension)) ? contentType : "";
 }
 
 function mediaHeaders(media, env = {}) {
-  const disposition = /^image\/|^video\//i.test(String(media.contentType || ""))
-    ? "inline"
-    : encodeContentDispositionFilename(media.fileName);
+  const inlineContentType = getSafeInlineBoardMediaContentType(media);
+  const disposition = encodeContentDispositionFilename(
+    media.fileName,
+    inlineContentType ? "inline" : "attachment"
+  );
   const headers = applySecurityHeaders({
-    "Content-Type": media.contentType,
+    "Content-Type": inlineContentType || "application/octet-stream",
     "Content-Disposition": disposition,
+    "X-Download-Options": "noopen",
     "Cache-Control": "private, no-store",
     "Access-Control-Allow-Origin": env.FRONTEND_ORIGIN || "",
     "Access-Control-Allow-Credentials": "true",
@@ -1034,6 +1055,16 @@ function normalizeBoardPost(raw, fallback = {}) {
   };
 }
 
+function hasUnsafeBoardHtml(raw) {
+  if (!raw || !Boolean(raw.htmlEnabled)) return false;
+  const html = String(raw.body || "");
+  if (/<\s*\/?\s*(?:script|style|iframe|object|embed|applet|form|input|button|textarea|select|option|link|meta|base|svg|math|template|canvas|audio)\b/i.test(html)) {
+    return true;
+  }
+  if (/\s(?:on[a-z0-9_-]+|srcdoc|xlink:href|xmlns)\s*=/i.test(html)) return true;
+  return /\s(?:href|src|poster)\s*=\s*(?:["']\s*)?(?:javascript|vbscript|data)\s*:/i.test(html);
+}
+
 function normalizeBoardCategory(category) {
   return normalizeBoardCategoryValue(category) || "free";
 }
@@ -1715,7 +1746,12 @@ function getBoardMediaContentType(request) {
 }
 
 function cleanBoardMediaFileName(value) {
-  return cleanBoardText(value, 180).replace(/[\\/:*?"<>|]/g, "_") || "attachment";
+  const fileName = cleanBoardText(value, 180)
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/^\.+/, "")
+    .trim();
+  return fileName || "attachment";
 }
 
 function getBoardMediaFileName(request) {
@@ -1889,6 +1925,7 @@ async function handleBoardPosts(request, env, url) {
     const body = await parseJsonBody(request);
     const authResponse = await requireAuthOrPassword(request, env, body);
     if (authResponse) return authResponse;
+    if (hasUnsafeBoardHtml(body)) return jsonResponse({ error: "unsafe_html" }, 400, env);
     const post = normalizeBoardPost(withoutPassword(body), {
       id: `post-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
       createdAt: Date.now(),
@@ -1927,7 +1964,7 @@ async function handleBoardPosts(request, env, url) {
     const posts = await readBoardPosts(env);
     const index = posts.findIndex((post) => post.id === postId);
     if (index < 0) return jsonResponse({ error: "not_found" }, 404, env);
-    const updated = normalizeBoardPost({
+    const nextPost = {
       ...posts[index],
       ...withoutPassword(body),
       id: posts[index].id,
@@ -1935,7 +1972,9 @@ async function handleBoardPosts(request, env, url) {
       views: posts[index].views,
       likes: posts[index].likes,
       updatedAt: Date.now(),
-    });
+    };
+    if (hasUnsafeBoardHtml(nextPost)) return jsonResponse({ error: "unsafe_html" }, 400, env);
+    const updated = normalizeBoardPost(nextPost);
     if (!updated) return jsonResponse({ error: "invalid_post" }, 400, env);
     posts[index] = updated;
     return jsonResponse({ posts: await writeBoardPosts(env, posts), post: updated }, 200, env);
@@ -3993,6 +4032,7 @@ export class BoardStore {
       const body = await parseJsonBody(request);
       const postPassword = cleanBoardText(body?.postPassword, 200);
       if (!postPassword) return jsonResponse({ error: "post_password_required" }, 400, this.env);
+      if (hasUnsafeBoardHtml(body)) return jsonResponse({ error: "unsafe_html" }, 400, this.env);
       const post = normalizeBoardPost({
         ...body,
         authorMemberId: access.claims?.role === "member" ? access.claims.subject : "",
@@ -4102,7 +4142,7 @@ export class BoardStore {
       }
       const beforePost = posts[index];
       const adminMode = await isAdminPassword(body?.adminPassword || "", this.env);
-      const updated = normalizeBoardPost({
+      const nextPost = {
         ...beforePost,
         ...withoutPassword(body),
         id: beforePost.id,
@@ -4115,7 +4155,9 @@ export class BoardStore {
           ? await sha256Hex(body.newPostPassword)
           : beforePost.passwordHash,
         updatedAt: Date.now(),
-      });
+      };
+      if (hasUnsafeBoardHtml(nextPost)) return jsonResponse({ error: "unsafe_html" }, 400, this.env);
+      const updated = normalizeBoardPost(nextPost);
       if (!updated) return jsonResponse({ error: "invalid_post" }, 400, this.env);
       const changes = [];
       if (beforePost.title !== updated.title) changes.push("제목");
