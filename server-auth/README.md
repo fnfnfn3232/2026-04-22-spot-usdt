@@ -149,7 +149,25 @@ Add these GitHub repository secrets:
 - `OTP_EMAIL_TO_2` (optional second permitted email address)
 - `OTP_EMAIL_FROM` (optional; use a Resend-verified sender domain for member password-reset and status emails)
 
-The deploy workflow also creates/uses the private R2 bucket named `coin-board-media`. The Cloudflare API token needs permission to deploy Workers and manage/read/write R2 buckets.
+The deploy workflow creates and uses two private R2 buckets:
+
+- `coin-board-media`: live board attachments
+- `coin-site-backups`: encrypted database snapshots and attachment backup copies
+
+No public R2 URL or download route is enabled for `coin-site-backups`. The Cloudflare API token needs permission to deploy Workers and manage/read/write R2 buckets.
+
+## Automatic R2 backups
+
+The Worker runs a scheduled backup every day at 03:17 KST (18:17 UTC).
+
+- Database data is serialized and encrypted with AES-256-GCM before it is written to `database/YYYY-MM-DD.cbk`.
+- Daily database snapshots are kept for 30 days.
+- R2 attachment chunks are copied incrementally to the `media/` prefix. A scheduled run copies up to 50 missing chunks so normal Worker traffic is not crowded out.
+- Legacy attachments that still live in the Durable Object are copied to `legacy-media/`.
+- Deleting a live attachment does not automatically delete its backup copy.
+- The latest successful run summary is stored privately as `status/latest.json`.
+
+The encryption key is derived from `BACKUP_ENCRYPTION_KEY` when that optional Worker secret exists. Otherwise the existing `SESSION_SECRET` is used, so no extra setup is required. Keep the secret used for encryption: changing or losing it makes older encrypted snapshots impossible to restore.
 
 Korean GitHub menu path:
 

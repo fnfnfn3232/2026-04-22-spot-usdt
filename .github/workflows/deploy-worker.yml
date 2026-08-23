@@ -33,6 +33,9 @@ jobs:
           NEWS_CACHE_SECONDS = "600"
           MEMBER_REGISTRATION_ENABLED = "true"
 
+          [triggers]
+          crons = ["17 18 * * *"]
+
           [[durable_objects.bindings]]
           name = "BOARD_STORE"
           class_name = "BoardStore"
@@ -41,18 +44,23 @@ jobs:
           binding = "BOARD_MEDIA_BUCKET"
           bucket_name = "coin-board-media"
 
+          [[r2_buckets]]
+          binding = "BACKUP_BUCKET"
+          bucket_name = "coin-site-backups"
+
           [[migrations]]
           tag = "v1"
           new_sqlite_classes = ["BoardStore"]
           EOF
 
-      - name: Ensure R2 media bucket
+      - name: Ensure private R2 buckets
         working-directory: server-auth
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           npx --yes wrangler@3 r2 bucket create coin-board-media || true
+          npx --yes wrangler@3 r2 bucket create coin-site-backups || true
 
       - name: Configure optional email login secrets
         working-directory: server-auth

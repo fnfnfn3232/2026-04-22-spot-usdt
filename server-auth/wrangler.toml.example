@@ -9,9 +9,24 @@ NEWS_STORE_LIMIT = "1000"
 NEWS_CACHE_SECONDS = "600"
 MEMBER_REGISTRATION_ENABLED = "true"
 
+[triggers]
+crons = ["17 18 * * *"]
+
+[[durable_objects.bindings]]
+name = "BOARD_STORE"
+class_name = "BoardStore"
+
 [[r2_buckets]]
 binding = "BOARD_MEDIA_BUCKET"
 bucket_name = "coin-board-media"
+
+[[r2_buckets]]
+binding = "BACKUP_BUCKET"
+bucket_name = "coin-site-backups"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BoardStore"]
 
 # Set these as secrets, not plain vars:
 # wrangler secret put SITE_PASSWORD_SHA256
@@ -21,3 +36,4 @@ bucket_name = "coin-board-media"
 # wrangler secret put OTP_EMAIL_TO
 # wrangler secret put OTP_EMAIL_TO_2
 # wrangler secret put OTP_EMAIL_FROM
+# Optional: wrangler secret put BACKUP_ENCRYPTION_KEY

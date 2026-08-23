@@ -44,6 +44,12 @@ const BOARD_MEDIA_CHUNK_BYTES = 1024 * 1024;
 const BOARD_MEDIA_R2_CHUNK_BYTES = 8 * 1024 * 1024;
 const BOARD_MEDIA_R2_PARALLEL_CHUNKS = 4;
 const BOARD_MEDIA_R2_KEY_PREFIX = "free-board-media";
+const BACKUP_SCHEMA_VERSION = 1;
+const BACKUP_DATABASE_PREFIX = "database/";
+const BACKUP_MEDIA_PREFIX = "media/";
+const BACKUP_LEGACY_MEDIA_PREFIX = "legacy-media/";
+const BACKUP_RETENTION_DAYS = 30;
+const BACKUP_MEDIA_COPY_LIMIT = 50;
 const BOARD_MEDIA_UPLOAD_KEY_PREFIX = `${BOARD_MEDIA_KEY_PREFIX}upload:`;
 const BOARD_MEDIA_UPLOAD_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 const MARKET_DATA_MAX_BYTES = 8 * 1024 * 1024;
@@ -1583,6 +1589,107 @@ function hasBoardMediaR2(env) {
   return Boolean(env?.BOARD_MEDIA_BUCKET && typeof env.BOARD_MEDIA_BUCKET.put === "function");
 }
 
+function hasBackupR2(env) {
+  return Boolean(env?.BACKUP_BUCKET && typeof env.BACKUP_BUCKET.put === "function");
+}
+
+function getBackupDateKey(now = Date.now()) {
+  return new Date(now).toISOString().slice(0, 10);
+}
+
+async function encryptBackupJson(value, env) {
+  const secret = String(env?.BACKUP_ENCRYPTION_KEY || env?.SESSION_SECRET || "");
+  if (secret.length < 32) throw new Error("backup_encryption_secret_not_configured");
+  const encoder = new TextEncoder();
+  const keyBytes = await crypto.subtle.digest(
+    "SHA-256",
+    encoder.encode(`coin-site-backup-v${BACKUP_SCHEMA_VERSION}:${secret}`)
+  );
+  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = encoder.encode(JSON.stringify(value));
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext));
+  const output = new Uint8Array(4 + iv.byteLength + ciphertext.byteLength);
+  output.set([0x43, 0x42, 0x4b, BACKUP_SCHEMA_VERSION], 0);
+  output.set(iv, 4);
+  output.set(ciphertext, 4 + iv.byteLength);
+  return output;
+}
+
+async function putBackupObjectIfMissing(bucket, key, bytes, metadata = {}) {
+  const existing = await bucket.head(key);
+  const size = Math.max(0, Math.floor(Number(bytes?.byteLength) || 0));
+  if (existing && existing.size === size) return false;
+  await bucket.put(key, bytes, {
+    httpMetadata: { contentType: "application/octet-stream" },
+    customMetadata: Object.fromEntries(
+      Object.entries(metadata).map(([name, value]) => [name, String(value ?? "")])
+    ),
+  });
+  return true;
+}
+
+async function pruneDatabaseBackups(env, now = Date.now()) {
+  if (!hasBackupR2(env)) return 0;
+  const cutoff = now - (BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const deleteKeys = [];
+  let cursor;
+  do {
+    const page = await env.BACKUP_BUCKET.list({ prefix: BACKUP_DATABASE_PREFIX, cursor, limit: 1000 });
+    page.objects.forEach((object) => {
+      const uploadedAt = object.uploaded instanceof Date
+        ? object.uploaded.getTime()
+        : new Date(object.uploaded || 0).getTime();
+      if (Number.isFinite(uploadedAt) && uploadedAt > 0 && uploadedAt < cutoff) {
+        deleteKeys.push(object.key);
+      }
+    });
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  if (deleteKeys.length) await env.BACKUP_BUCKET.delete(deleteKeys);
+  return deleteKeys.length;
+}
+
+async function syncBoardMediaToBackup(env, copyLimit = BACKUP_MEDIA_COPY_LIMIT) {
+  if (!hasBoardMediaR2(env) || !hasBackupR2(env)) {
+    throw new Error("backup_media_storage_not_configured");
+  }
+  let scanned = 0;
+  let copied = 0;
+  let cursor;
+  do {
+    const page = await env.BOARD_MEDIA_BUCKET.list({
+      prefix: `${BOARD_MEDIA_R2_KEY_PREFIX}/`,
+      cursor,
+      limit: 1000,
+    });
+    for (const sourceInfo of page.objects) {
+      scanned += 1;
+      const backupKey = `${BACKUP_MEDIA_PREFIX}${sourceInfo.key}`;
+      const existing = await env.BACKUP_BUCKET.head(backupKey);
+      if (existing && existing.size === sourceInfo.size) continue;
+      const source = await env.BOARD_MEDIA_BUCKET.get(sourceInfo.key);
+      if (!source) continue;
+      const bytes = await source.arrayBuffer();
+      await env.BACKUP_BUCKET.put(backupKey, bytes, {
+        httpMetadata: source.httpMetadata,
+        customMetadata: {
+          ...(source.customMetadata || {}),
+          sourceKey: sourceInfo.key,
+          sourceUploadedAt: sourceInfo.uploaded instanceof Date
+            ? sourceInfo.uploaded.toISOString()
+            : String(sourceInfo.uploaded || ""),
+        },
+      });
+      copied += 1;
+      if (copied >= copyLimit) break;
+    }
+    if (copied >= copyLimit) break;
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return { scanned, copied, copyLimit };
+}
+
 function getBoardMediaR2ChunkKey(id, index) {
   return `${BOARD_MEDIA_R2_KEY_PREFIX}/${id}/chunks/${index}`;
 }
@@ -2558,6 +2665,117 @@ export class BoardStore {
     const bytes = Math.max(0, Math.floor(Number(response?.headers?.get("X-Response-Bytes")) || 0));
     if (bytes) await this.recordServerTransfer("api", bytes);
     return response;
+  }
+
+  async backupLegacyMedia(mediaId, media) {
+    if (!hasBackupR2(this.env) || !media || media.storage === "r2") return 0;
+    let copied = 0;
+    const chunkCount = Math.max(0, Math.floor(Number(media.chunkCount) || 0));
+    if (chunkCount > 0) {
+      for (let index = 0; index < chunkCount; index += 1) {
+        const bytes = await this.state.storage.get(getBoardMediaChunkKey(mediaId, index));
+        if (!bytes || !Number(bytes.byteLength)) continue;
+        const key = `${BACKUP_LEGACY_MEDIA_PREFIX}${mediaId}/chunks/${index}`;
+        if (await putBackupObjectIfMissing(this.env.BACKUP_BUCKET, key, bytes, {
+          mediaId,
+          chunkIndex: index,
+          source: "durable-object",
+        })) copied += 1;
+      }
+      return copied;
+    }
+    if (media.bytes && Number(media.bytes.byteLength) > 0) {
+      const key = `${BACKUP_LEGACY_MEDIA_PREFIX}${mediaId}/inline`;
+      if (await putBackupObjectIfMissing(this.env.BACKUP_BUCKET, key, media.bytes, {
+        mediaId,
+        source: "durable-object",
+      })) copied += 1;
+    }
+    return copied;
+  }
+
+  async readMediaMetadataForBackup() {
+    const records = await this.state.storage.list({ prefix: BOARD_MEDIA_KEY_PREFIX });
+    const media = [];
+    let legacyObjectsCopied = 0;
+    for (const [key, value] of records) {
+      if (!key.startsWith(BOARD_MEDIA_KEY_PREFIX) || key.startsWith(BOARD_MEDIA_UPLOAD_KEY_PREFIX)) continue;
+      if (key.includes(":chunk:")) continue;
+      const mediaId = key.slice(BOARD_MEDIA_KEY_PREFIX.length);
+      if (!isSafeBoardMediaId(mediaId) || !value || typeof value !== "object") continue;
+      legacyObjectsCopied += await this.backupLegacyMedia(mediaId, value);
+      const { bytes: _bytes, ...metadata } = value;
+      media.push({ id: mediaId, ...metadata });
+    }
+    return { media, legacyObjectsCopied };
+  }
+
+  async createDailyBackup(now = Date.now()) {
+    if (!hasBackupR2(this.env)) {
+      return jsonResponse({ error: "backup_storage_not_configured" }, 503, this.env);
+    }
+    const [
+      members,
+      posts,
+      categories,
+      screenSettings,
+      adminLogs,
+      usageStats,
+      news,
+      marketData,
+      mediaResult,
+    ] = await Promise.all([
+      this.readMembers(),
+      this.readPosts(),
+      this.readCategories(),
+      this.readScreenSettingsRecord(),
+      this.readAdminLogs(),
+      this.readUsageStats(),
+      this.readNewsStore(),
+      this.readMarketData(),
+      this.readMediaMetadataForBackup(),
+    ]);
+    const createdAt = new Date(now).toISOString();
+    const snapshot = {
+      schemaVersion: BACKUP_SCHEMA_VERSION,
+      createdAt,
+      source: "coin-board-auth/BoardStore/free-board",
+      data: {
+        members,
+        posts,
+        categories,
+        screenSettings,
+        adminLogs,
+        usageStats,
+        news,
+        marketData,
+        media: mediaResult.media,
+      },
+    };
+    const encrypted = await encryptBackupJson(snapshot, this.env);
+    const key = `${BACKUP_DATABASE_PREFIX}${getBackupDateKey(now)}.cbk`;
+    await this.env.BACKUP_BUCKET.put(key, encrypted, {
+      httpMetadata: { contentType: "application/octet-stream" },
+      customMetadata: {
+        schemaVersion: BACKUP_SCHEMA_VERSION,
+        createdAt,
+        encryption: "AES-256-GCM",
+        source: "BoardStore-free-board",
+      },
+    });
+    const pruned = await pruneDatabaseBackups(this.env, now);
+    return jsonResponse({
+      ok: true,
+      key,
+      createdAt,
+      encryptedBytes: encrypted.byteLength,
+      pruned,
+      posts: posts.length,
+      members: members.length,
+      news: news.items.length,
+      media: mediaResult.media.length,
+      legacyObjectsCopied: mediaResult.legacyObjectsCopied,
+    }, 200, this.env);
   }
 
   async readMedia(id) {
@@ -3582,6 +3800,15 @@ export class BoardStore {
     const url = new URL(request.url);
     const postId = decodeURIComponent(url.pathname.replace(/^\/api\/board\/posts\/?/, ""));
 
+    if (
+      request.method === "POST"
+      && url.pathname === "/internal/backup"
+      && request.headers.get("X-Internal-Backup") === "scheduled-v1"
+    ) {
+      const requestedTime = Math.floor(Number(request.headers.get("X-Backup-Time")) || Date.now());
+      return this.createDailyBackup(Math.max(0, requestedTime));
+    }
+
     if (request.method === "POST" && url.pathname === "/api/login") {
       return this.handleLoginRequest(request);
     }
@@ -3925,6 +4152,60 @@ export class BoardStore {
   }
 }
 
+async function runScheduledBackup(env, scheduledTime = Date.now()) {
+  if (!env?.BOARD_STORE || !hasBackupR2(env)) {
+    throw new Error("scheduled_backup_storage_not_configured");
+  }
+  const startedAt = Date.now();
+  const id = env.BOARD_STORE.idFromName("free-board");
+  const databaseResponse = await env.BOARD_STORE.get(id).fetch(new Request(
+    "https://board-store/internal/backup",
+    {
+      method: "POST",
+      headers: {
+        "X-Internal-Backup": "scheduled-v1",
+        "X-Backup-Time": String(Math.max(0, Math.floor(Number(scheduledTime) || Date.now()))),
+      },
+    }
+  ));
+  const databaseText = await databaseResponse.text();
+  let databaseResult = {};
+  try {
+    databaseResult = JSON.parse(databaseText);
+  } catch (_error) {
+    databaseResult = { error: databaseText.slice(0, 300) || "invalid_backup_response" };
+  }
+  if (!databaseResponse.ok || databaseResult.ok !== true) {
+    throw new Error(`database_backup_failed:${databaseResult.error || databaseResponse.status}`);
+  }
+
+  const mediaResult = await syncBoardMediaToBackup(env);
+  const completedAt = Date.now();
+  const status = {
+    ok: true,
+    schemaVersion: BACKUP_SCHEMA_VERSION,
+    scheduledTime: Math.max(0, Math.floor(Number(scheduledTime) || startedAt)),
+    startedAt,
+    completedAt,
+    durationMs: completedAt - startedAt,
+    database: databaseResult,
+    media: mediaResult,
+  };
+  await env.BACKUP_BUCKET.put("status/latest.json", JSON.stringify(status), {
+    httpMetadata: { contentType: "application/json; charset=utf-8" },
+    customMetadata: {
+      completedAt: new Date(completedAt).toISOString(),
+      databaseKey: String(databaseResult.key || ""),
+    },
+  });
+  console.log("scheduled_backup_complete", JSON.stringify({
+    databaseKey: databaseResult.key,
+    mediaCopied: mediaResult.copied,
+    durationMs: status.durationMs,
+  }));
+  return status;
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return optionsResponse(request, env);
@@ -4110,5 +4391,9 @@ export default {
     }
 
     return jsonResponse({ error: "not_found" }, 404, env);
+  },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runScheduledBackup(env, event?.scheduledTime || Date.now()));
   },
 };
