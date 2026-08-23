@@ -161,11 +161,13 @@ No public R2 URL or download route is enabled for `coin-site-backups`. The Cloud
 The Worker runs a scheduled backup every day at 03:17 KST (18:17 UTC).
 
 - Database data is serialized and encrypted with AES-256-GCM before it is written to `database/YYYY-MM-DD.cbk`.
-- Daily database snapshots are kept for 30 days.
+- Daily database snapshots are kept for at least 30 days, with a one-day pruning safety margin after the lock expires.
 - R2 attachment chunks are copied incrementally to the `media/` prefix. A scheduled run copies up to 50 missing chunks so normal Worker traffic is not crowded out.
 - Legacy attachments that still live in the Durable Object are copied to `legacy-media/`.
 - Deleting a live attachment does not automatically delete its backup copy.
 - The latest successful run summary is stored privately as `status/latest.json`.
+- R2 bucket lock rules protect `database/`, `media/`, and `legacy-media/` objects from deletion or overwrite for 30 days. `status/latest.json` stays unlocked so the daily status can be updated.
+- The deploy workflow preserves unrelated bucket lock rules and fails deployment if these three protection rules cannot be applied and verified.
 
 The encryption key is derived from `BACKUP_ENCRYPTION_KEY` when that optional Worker secret exists. Otherwise the existing `SESSION_SECRET` is used, so no extra setup is required. Keep the secret used for encryption: changing or losing it makes older encrypted snapshots impossible to restore.
 

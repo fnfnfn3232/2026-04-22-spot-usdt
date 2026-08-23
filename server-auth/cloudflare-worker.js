@@ -1631,7 +1631,9 @@ async function putBackupObjectIfMissing(bucket, key, bytes, metadata = {}) {
 
 async function pruneDatabaseBackups(env, now = Date.now()) {
   if (!hasBackupR2(env)) return 0;
-  const cutoff = now - (BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  // Leave a full day between lock expiry and pruning so clock drift cannot make
+  // a multi-object delete fail while the oldest snapshot is still protected.
+  const cutoff = now - ((BACKUP_RETENTION_DAYS + 1) * 24 * 60 * 60 * 1000);
   const deleteKeys = [];
   let cursor;
   do {
@@ -2714,6 +2716,19 @@ export class BoardStore {
     if (!hasBackupR2(this.env)) {
       return jsonResponse({ error: "backup_storage_not_configured" }, 503, this.env);
     }
+    const key = `${BACKUP_DATABASE_PREFIX}${getBackupDateKey(now)}.cbk`;
+    const existing = await this.env.BACKUP_BUCKET.head(key);
+    if (existing) {
+      const pruned = await pruneDatabaseBackups(this.env, now);
+      return jsonResponse({
+        ok: true,
+        key,
+        createdAt: String(existing.customMetadata?.createdAt || existing.uploaded || ""),
+        encryptedBytes: existing.size,
+        reused: true,
+        pruned,
+      }, 200, this.env);
+    }
     const [
       members,
       posts,
@@ -2753,7 +2768,6 @@ export class BoardStore {
       },
     };
     const encrypted = await encryptBackupJson(snapshot, this.env);
-    const key = `${BACKUP_DATABASE_PREFIX}${getBackupDateKey(now)}.cbk`;
     await this.env.BACKUP_BUCKET.put(key, encrypted, {
       httpMetadata: { contentType: "application/octet-stream" },
       customMetadata: {
@@ -2769,6 +2783,7 @@ export class BoardStore {
       key,
       createdAt,
       encryptedBytes: encrypted.byteLength,
+      reused: false,
       pruned,
       posts: posts.length,
       members: members.length,

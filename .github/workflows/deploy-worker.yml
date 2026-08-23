@@ -62,6 +62,58 @@ jobs:
           npx --yes wrangler@3 r2 bucket create coin-board-media || true
           npx --yes wrangler@3 r2 bucket create coin-site-backups || true
 
+      - name: Protect backup objects from deletion
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          api_url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets/coin-site-backups/lock"
+          current="$(curl --fail-with-body --silent --show-error "$api_url" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")"
+          echo "$current" | jq -e '.success == true' >/dev/null
+
+          rules="$(echo "$current" | jq '
+            (.result.rules // [])
+            | map(select(.id != "protect-database-30d"
+              and .id != "protect-media-30d"
+              and .id != "protect-legacy-media-30d"))
+            + [
+                {
+                  id: "protect-database-30d",
+                  enabled: true,
+                  prefix: "database/",
+                  condition: { type: "Age", maxAgeSeconds: 2592000 }
+                },
+                {
+                  id: "protect-media-30d",
+                  enabled: true,
+                  prefix: "media/",
+                  condition: { type: "Age", maxAgeSeconds: 2592000 }
+                },
+                {
+                  id: "protect-legacy-media-30d",
+                  enabled: true,
+                  prefix: "legacy-media/",
+                  condition: { type: "Age", maxAgeSeconds: 2592000 }
+                }
+              ]')"
+          payload="$(jq -n --argjson rules "$rules" '{rules: $rules}')"
+          updated="$(curl --fail-with-body --silent --show-error -X PUT "$api_url" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "$payload")"
+          echo "$updated" | jq -e '.success == true' >/dev/null
+
+          verified="$(curl --fail-with-body --silent --show-error "$api_url" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")"
+          for rule_id in protect-database-30d protect-media-30d protect-legacy-media-30d; do
+            echo "$verified" | jq -e --arg id "$rule_id" \
+              '.success == true and any(.result.rules[]; .id == $id and .enabled == true and .condition.type == "Age" and .condition.maxAgeSeconds == 2592000)' \
+              >/dev/null
+          done
+          echo "Verified 30-day deletion protection for database and attachment backups."
+
       - name: Configure optional email login secrets
         working-directory: server-auth
         # Primary and optional secondary email secrets are synchronized before deployment.
