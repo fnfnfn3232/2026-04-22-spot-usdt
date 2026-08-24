@@ -1831,20 +1831,17 @@
       }
 
       .audit-filters,
-      .audit-sorts,
       .audit-search {
         display: flex;
         align-items: center;
         gap: 7px;
       }
 
-      .audit-filters,
-      .audit-sorts {
+      .audit-filters {
         flex-wrap: wrap;
       }
 
-      .audit-filter,
-      .audit-sort {
+      .audit-filter {
         min-height: 38px;
         padding: 0 13px;
         border: 1px solid var(--line);
@@ -1854,8 +1851,7 @@
         font-weight: 800;
       }
 
-      .audit-filter.active,
-      .audit-sort.active {
+      .audit-filter.active {
         border-color: var(--accent);
         background: var(--accent-soft);
         color: var(--accent);
@@ -1906,6 +1902,28 @@
         color: var(--muted);
         font-size: 12px;
         font-weight: 800;
+      }
+
+      .audit-column-sort {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        min-height: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        font-weight: inherit;
+        text-align: left;
+      }
+
+      .audit-column-sort:hover,
+      .audit-column-sort:focus-visible,
+      .audit-column-sort.is-active {
+        background: transparent;
+        color: var(--accent);
       }
 
       .audit-no {
@@ -10993,13 +11011,6 @@
                 <button class="audit-filter${upbitAuditFilter === "report" ? " active" : ""}" type="button" data-audit-filter="report">보고서 전체</button>
                 <button class="audit-filter${upbitAuditFilter === "low" ? " active" : ""}" type="button" data-audit-filter="low">보유비율 미달</button>
               </div>
-              <div class="audit-sorts" aria-label="발행량 대비 보유 및 업비트 보유가치 정렬">
-                <button class="audit-sort${upbitAuditSort === "report" ? " active" : ""}" type="button" data-audit-sort="report">기본 순서</button>
-                <button class="audit-sort${upbitAuditSort === "share-desc" ? " active" : ""}" type="button" data-audit-sort="share-desc">발행대비 높은순</button>
-                <button class="audit-sort${upbitAuditSort === "share-asc" ? " active" : ""}" type="button" data-audit-sort="share-asc">발행대비 낮은순</button>
-                <button class="audit-sort${upbitAuditSort === "value-desc" ? " active" : ""}" type="button" data-audit-sort="value-desc">보유가치 높은순</button>
-                <button class="audit-sort${upbitAuditSort === "value-asc" ? " active" : ""}" type="button" data-audit-sort="value-asc">보유가치 낮은순</button>
-              </div>
               <form class="audit-search" id="auditSearchForm">
                 <input name="auditQuery" type="search" autocomplete="off" placeholder="코인명·심볼 검색" value="${escapeAttr(upbitAuditQuery)}" />
                 <button type="submit">검색</button>
@@ -11023,9 +11034,17 @@
                       <th class="audit-quantity">전산원장 수량 (A)</th>
                       <th class="audit-quantity">분산원장 수량 (B)</th>
                       <th class="audit-market">총발행량</th>
-                      <th class="audit-market">발행량 대비 보유</th>
+                      <th class="audit-market" aria-sort="${upbitAuditSort === "share-asc" ? "ascending" : upbitAuditSort === "share-desc" ? "descending" : "none"}">
+                        <button class="audit-column-sort${upbitAuditSort.startsWith("share-") ? " is-active" : ""}" type="button" data-audit-sort="share" title="${upbitAuditSort === "share-desc" ? "클릭하면 낮은 순으로 정렬" : "클릭하면 높은 순으로 정렬"}">
+                          발행량 대비 보유${upbitAuditSort === "share-asc" ? " ↑" : upbitAuditSort === "share-desc" ? " ↓" : ""}
+                        </button>
+                      </th>
                       <th class="audit-market">현재 가격</th>
-                      <th class="audit-market">업비트 보유가치</th>
+                      <th class="audit-market" aria-sort="${upbitAuditSort === "value-asc" ? "ascending" : upbitAuditSort === "value-desc" ? "descending" : "none"}">
+                        <button class="audit-column-sort${upbitAuditSort.startsWith("value-") ? " is-active" : ""}" type="button" data-audit-sort="value" title="${upbitAuditSort === "value-desc" ? "클릭하면 낮은 순으로 정렬" : "클릭하면 높은 순으로 정렬"}">
+                          업비트 보유가치${upbitAuditSort === "value-asc" ? " ↑" : upbitAuditSort === "value-desc" ? " ↓" : ""}
+                        </button>
+                      </th>
                       <th class="audit-ratio">보유비율 (B/A)</th>
                     </tr>
                   </thead>
@@ -16010,9 +16029,10 @@
 
         const auditSortButton = clickTarget.closest("[data-audit-sort]");
         if (auditSortButton) {
-          const nextSort = String(auditSortButton.dataset.auditSort || "");
-          if (["report", "share-desc", "share-asc", "value-desc", "value-asc"].includes(nextSort)) {
-            upbitAuditSort = nextSort;
+          const sortField = String(auditSortButton.dataset.auditSort || "");
+          if (["share", "value"].includes(sortField)) {
+            const descendingSort = `${sortField}-desc`;
+            upbitAuditSort = upbitAuditSort === descendingSort ? `${sortField}-asc` : descendingSort;
             upbitAuditPage = 1;
             renderAuditPanel();
             writeAppHistoryState(true);
