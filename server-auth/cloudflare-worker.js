@@ -9,6 +9,9 @@ const USAGE_STATS_KEY = "usage-stats-v1";
 const NEWS_STORE_KEY = "coinness-news-store-v1";
 const MARKET_DATA_KEY = "market-data-v1";
 const MARKET_DATA_CHUNK_PREFIX = "market-data-v1:chunk:";
+const EXCHANGE_HISTORY_KEY = "exchange-history-v1";
+const EXCHANGE_HISTORY_IDS = ["binance", "upbit", "bithumb", "coinbase"];
+const EXCHANGE_HISTORY_MAX_EVENTS = 3000;
 const SCREEN_SETTINGS_KEY = "screen-settings-v1";
 const LOGIN_ATTEMPT_KEY_PREFIX = "login-attempt:";
 const EMAIL_OTP_KEY_PREFIX = "email-login-otp:";
@@ -1430,6 +1433,7 @@ async function requireGithubOidc(request, env) {
 
 function isProtectedContentPath(url) {
   return url.pathname === "/api/market-data"
+    || url.pathname === "/api/exchange-history"
     || url.pathname === "/api/live-prices"
     || url.pathname === "/api/news"
     || url.pathname === "/api/screen-settings"
@@ -2188,6 +2192,63 @@ function normalizeMarketDataPayload(payload) {
   return normalized;
 }
 
+function emptyExchangeHistoryRecord() {
+  return {
+    version: 1,
+    updatedAt: 0,
+    exchanges: Object.fromEntries(EXCHANGE_HISTORY_IDS.map((exchange) => [exchange, {
+      latestGeneratedAt: 0,
+      total: 0,
+      withCap: 0,
+      events: [],
+    }])),
+  };
+}
+
+function normalizeExchangeHistoryEvent(event) {
+  if (!event || typeof event !== "object") return null;
+  const type = event.type === "listed" || event.type === "delisted" ? event.type : "";
+  const detectedAt = Math.max(0, Math.floor(Number(event.detectedAt) || 0));
+  const symbol = String(event.symbol || "").trim().slice(0, 80);
+  const pair = String(event.pair || "").trim().slice(0, 120);
+  if (!type || !detectedAt || (!symbol && !pair)) return null;
+  return {
+    id: String(event.id || `${detectedAt}:${type}:${pair || symbol}`).slice(0, 260),
+    type,
+    detectedAt,
+    symbol,
+    pair,
+    name: String(event.name || symbol || pair).trim().slice(0, 160),
+    marketCapUsd: Number.isFinite(Number(event.marketCapUsd)) && Number(event.marketCapUsd) > 0
+      ? Number(event.marketCapUsd)
+      : null,
+    beforeTotal: Math.max(0, Math.floor(Number(event.beforeTotal) || 0)),
+    afterTotal: Math.max(0, Math.floor(Number(event.afterTotal) || 0)),
+    beforeWithCap: Math.max(0, Math.floor(Number(event.beforeWithCap) || 0)),
+    afterWithCap: Math.max(0, Math.floor(Number(event.afterWithCap) || 0)),
+  };
+}
+
+function normalizeExchangeHistoryRecord(value) {
+  const fallback = emptyExchangeHistoryRecord();
+  if (!value || typeof value !== "object") return fallback;
+  for (const exchange of EXCHANGE_HISTORY_IDS) {
+    const source = value.exchanges?.[exchange];
+    fallback.exchanges[exchange] = {
+      latestGeneratedAt: Math.max(0, Math.floor(Number(source?.latestGeneratedAt) || 0)),
+      total: Math.max(0, Math.floor(Number(source?.total) || 0)),
+      withCap: Math.max(0, Math.floor(Number(source?.withCap) || 0)),
+      events: (Array.isArray(source?.events) ? source.events : [])
+        .map(normalizeExchangeHistoryEvent)
+        .filter(Boolean)
+        .sort((a, b) => b.detectedAt - a.detectedAt)
+        .slice(0, EXCHANGE_HISTORY_MAX_EVENTS),
+    };
+  }
+  fallback.updatedAt = Math.max(0, Math.floor(Number(value.updatedAt) || 0));
+  return fallback;
+}
+
 async function fetchSeedNewsItems(env) {
   const seedUrl = String(env.NEWS_SEED_URL || "").trim();
   if (!seedUrl) return [];
@@ -2511,6 +2572,86 @@ export class BoardStore {
     }
   }
 
+  async readExchangeHistory() {
+    return normalizeExchangeHistoryRecord(await this.state.storage.get(EXCHANGE_HISTORY_KEY));
+  }
+
+  async recordExchangeHistory(payload) {
+    const generatedAt = Math.max(0, Math.floor(Number(payload?.generatedAt) || 0));
+    if (!generatedAt) return;
+    const history = await this.readExchangeHistory();
+    let changed = false;
+
+    for (const exchange of EXCHANGE_HISTORY_IDS) {
+      const record = history.exchanges[exchange];
+      if (generatedAt <= record.latestGeneratedAt) continue;
+      const stats = payload?.stats?.[exchange] || {};
+      const afterTotal = Math.max(0, Math.floor(Number(stats.total) || 0));
+      const afterWithCap = Math.max(0, Math.floor(Number(stats.withCap) || 0));
+      const exchangeChanges = payload?.changes?.[exchange] || {};
+      const added = Array.isArray(exchangeChanges.added) ? exchangeChanges.added : [];
+      const removed = Array.isArray(exchangeChanges.removed) ? exchangeChanges.removed : [];
+      const beforeTotal = Math.max(0, afterTotal - added.length + removed.length);
+      const beforeWithCap = record.latestGeneratedAt > 0 ? record.withCap : afterWithCap;
+      const batch = [];
+
+      for (const [type, items] of [["listed", added], ["delisted", removed]]) {
+        for (const item of items) {
+          const symbol = String(item?.symbol || "").trim();
+          const pair = String(item?.pair || "").trim();
+          if (!symbol && !pair) continue;
+          batch.push(normalizeExchangeHistoryEvent({
+            id: `${generatedAt}:${exchange}:${type}:${pair || symbol}`,
+            type,
+            detectedAt: generatedAt,
+            symbol,
+            pair,
+            name: item?.name,
+            marketCapUsd: item?.sortCapUsd,
+            beforeTotal,
+            afterTotal,
+            beforeWithCap,
+            afterWithCap,
+          }));
+        }
+      }
+
+      record.latestGeneratedAt = generatedAt;
+      record.total = afterTotal;
+      record.withCap = afterWithCap;
+      if (batch.length) {
+        const seen = new Set(record.events.map((event) => event.id));
+        record.events = [...batch.filter((event) => event && !seen.has(event.id)), ...record.events]
+          .slice(0, EXCHANGE_HISTORY_MAX_EVENTS);
+      }
+      changed = true;
+    }
+
+    if (changed) {
+      history.updatedAt = Date.now();
+      await this.state.storage.put(EXCHANGE_HISTORY_KEY, history);
+    }
+  }
+
+  async handleExchangeHistoryRequest(url = new URL("https://local/api/exchange-history")) {
+    const exchange = String(url.searchParams.get("exchange") || "").trim().toLowerCase();
+    if (!EXCHANGE_HISTORY_IDS.includes(exchange)) {
+      return jsonResponse({ error: "invalid_exchange" }, 400, this.env);
+    }
+    const limit = Math.min(500, Math.max(1, Math.floor(Number(url.searchParams.get("limit")) || 200)));
+    const history = await this.readExchangeHistory();
+    const record = history.exchanges[exchange];
+    return jsonResponse({
+      exchange,
+      updatedAt: history.updatedAt,
+      latestGeneratedAt: record.latestGeneratedAt,
+      total: record.total,
+      withCap: record.withCap,
+      storedCount: record.events.length,
+      events: record.events.slice(0, limit),
+    }, 200, this.env);
+  }
+
   async writeMarketData(request) {
     const text = await request.text();
     const bytes = new TextEncoder().encode(text).byteLength;
@@ -2547,6 +2688,7 @@ export class BoardStore {
       bytes: new TextEncoder().encode(serialized).byteLength,
       chunkCount,
     });
+    await this.recordExchangeHistory(normalized);
     return jsonResponse({
       ok: true,
       generatedAt: normalized.generatedAt || 0,
@@ -2777,6 +2919,7 @@ export class BoardStore {
       usageStats,
       news,
       marketData,
+      exchangeHistory,
       mediaResult,
     ] = await Promise.all([
       this.readMembers(),
@@ -2787,6 +2930,7 @@ export class BoardStore {
       this.readUsageStats(),
       this.readNewsStore(),
       this.readMarketData(),
+      this.readExchangeHistory(),
       this.readMediaMetadataForBackup(),
     ]);
     const createdAt = new Date(now).toISOString();
@@ -2803,6 +2947,7 @@ export class BoardStore {
         usageStats,
         news,
         marketData,
+        exchangeHistory,
         media: mediaResult.media,
       },
     };
@@ -3947,6 +4092,10 @@ export class BoardStore {
       return this.recordApiResponse(await this.handleMarketDataRequest(request, url));
     }
 
+    if (request.method === "GET" && url.pathname === "/api/exchange-history") {
+      return this.recordApiResponse(await this.handleExchangeHistoryRequest(url));
+    }
+
     if (request.method === "GET" && url.pathname === "/api/live-prices") {
       return this.recordApiResponse(await this.handleLivePricesRequest(request, url));
     }
@@ -4419,6 +4568,11 @@ export default {
     }
     if (url.pathname === "/api/market-data" && request.method === "GET") {
       if (!env.BOARD_STORE) return jsonResponse({ error: "market_data_storage_not_configured" }, 500, env);
+      const id = env.BOARD_STORE.idFromName("free-board");
+      return env.BOARD_STORE.get(id).fetch(request);
+    }
+    if (url.pathname === "/api/exchange-history" && request.method === "GET") {
+      if (!env.BOARD_STORE) return jsonResponse({ error: "exchange_history_storage_not_configured" }, 500, env);
       const id = env.BOARD_STORE.idFromName("free-board");
       return env.BOARD_STORE.get(id).fetch(request);
     }

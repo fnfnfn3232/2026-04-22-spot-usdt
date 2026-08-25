@@ -997,6 +997,31 @@
       border: 0;
       border-radius: 0;
       background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      transition: background-color 160ms ease, color 160ms ease;
+    }
+
+    .stat:hover,
+    .stat:focus-visible {
+      background: rgba(0, 125, 166, 0.07);
+      outline: none;
+    }
+
+    .stat-history-hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      margin-top: 10px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .stat-history-hint::after {
+      content: "\2192";
     }
 
     .stat + .stat {
@@ -1319,7 +1344,8 @@
       .shell.board-mode .news-host,
       .shell.ranking-mode .news-host,
       .shell.futures-mode .news-host,
-      .shell.audit-mode .news-host {
+      .shell.audit-mode .news-host,
+      .shell.exchange-history-mode .news-host {
         display: block;
       }
 
@@ -1327,7 +1353,8 @@
       .shell.board-mode .market-only,
       .shell.ranking-mode .market-only,
       .shell.futures-mode .market-only,
-      .shell.audit-mode .market-only {
+      .shell.audit-mode .market-only,
+      .shell.exchange-history-mode .market-only {
         display: none !important;
       }
 
@@ -1335,7 +1362,8 @@
       .shell.board-mode .market-section,
       .shell.ranking-mode .market-section,
       .shell.futures-mode .market-section,
-      .shell.audit-mode .market-section {
+      .shell.audit-mode .market-section,
+      .shell.exchange-history-mode .market-section {
         display: none;
       }
 
@@ -1999,6 +2027,247 @@
         padding: 42px 12px;
         color: var(--muted);
         text-align: center;
+      }
+
+      .exchange-history-shell {
+        min-width: 0;
+      }
+
+      .exchange-history-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+        padding-bottom: 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .exchange-history-kicker {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .exchange-history-title {
+        margin: 0;
+        color: var(--text);
+        font-size: 26px;
+        font-weight: 800;
+      }
+
+      .exchange-history-subtitle {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .exchange-history-back {
+        flex: 0 0 auto;
+        min-height: 40px;
+        padding: 0 14px;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--text);
+      }
+
+      .exchange-history-summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        border-bottom: 1px solid var(--line);
+      }
+
+      .exchange-history-summary-item {
+        min-width: 0;
+        padding: 17px 14px;
+      }
+
+      .exchange-history-summary-item + .exchange-history-summary-item {
+        border-left: 1px solid var(--line);
+      }
+
+      .exchange-history-summary-item span,
+      .exchange-history-summary-item strong {
+        display: block;
+      }
+
+      .exchange-history-summary-item span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .exchange-history-summary-item strong {
+        margin-top: 6px;
+        color: var(--text);
+        font-size: 18px;
+        font-weight: 800;
+      }
+
+      .exchange-history-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 16px 0 10px;
+      }
+
+      .exchange-history-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+      }
+
+      .exchange-history-filter,
+      .exchange-history-refresh {
+        min-height: 38px;
+        padding: 0 13px;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 750;
+      }
+
+      .exchange-history-filter.active,
+      .exchange-history-filter:hover,
+      .exchange-history-refresh:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .exchange-history-note {
+        padding: 0 0 14px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.65;
+      }
+
+      .exchange-history-list {
+        border-top: 1px solid var(--line);
+      }
+
+      .exchange-history-event {
+        display: grid;
+        grid-template-columns: minmax(150px, 1.1fr) minmax(220px, 1.8fr) minmax(130px, 0.8fr) minmax(180px, 1fr);
+        gap: 18px;
+        align-items: center;
+        min-height: 82px;
+        padding: 15px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .exchange-history-event-kind,
+      .exchange-history-event-asset,
+      .exchange-history-event-count,
+      .exchange-history-event-meta {
+        min-width: 0;
+      }
+
+      .exchange-history-event-kind {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 750;
+      }
+
+      .exchange-history-event-dot {
+        width: 8px;
+        height: 8px;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        background: #18a972;
+      }
+
+      .exchange-history-event.is-delisted .exchange-history-event-dot {
+        background: #dc5961;
+      }
+
+      .exchange-history-event-asset strong,
+      .exchange-history-event-asset span,
+      .exchange-history-event-count strong,
+      .exchange-history-event-count span,
+      .exchange-history-event-meta strong,
+      .exchange-history-event-meta span {
+        display: block;
+      }
+
+      .exchange-history-event-asset strong {
+        overflow: hidden;
+        color: var(--text);
+        font-size: 15px;
+        font-weight: 750;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .exchange-history-event-asset span,
+      .exchange-history-event-count span,
+      .exchange-history-event-meta span {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .exchange-history-event-meta {
+        text-align: right;
+      }
+
+      .exchange-history-event-count strong {
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 750;
+      }
+
+      .exchange-history-event-meta strong {
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 750;
+      }
+
+      .exchange-history-empty,
+      .exchange-history-loading,
+      .exchange-history-error {
+        padding: 52px 14px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      .exchange-history-error {
+        color: #c33f47;
+      }
+
+      @media (max-width: 720px) {
+        .exchange-history-head,
+        .exchange-history-toolbar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .exchange-history-summary {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .exchange-history-summary-item:nth-child(3) {
+          border-top: 1px solid var(--line);
+          border-left: 0;
+        }
+
+        .exchange-history-summary-item:nth-child(4) {
+          border-top: 1px solid var(--line);
+        }
+
+        .exchange-history-event {
+          grid-template-columns: 1fr;
+          gap: 8px;
+          padding: 14px 4px;
+        }
+
+        .exchange-history-event-meta {
+          text-align: left;
+        }
       }
 
       .ranking-shell {
@@ -5944,7 +6213,8 @@
       .shell.board-mode .hero,
       .shell.ranking-mode .hero,
       .shell.futures-mode .hero,
-      .shell.audit-mode .hero {
+      .shell.audit-mode .hero,
+      .shell.exchange-history-mode .hero {
         display: none;
       }
 
@@ -5952,7 +6222,8 @@
       .shell.board-mode .news-host,
       .shell.ranking-mode .news-host,
       .shell.futures-mode .news-host,
-      .shell.audit-mode .news-host {
+      .shell.audit-mode .news-host,
+      .shell.exchange-history-mode .news-host {
         padding-top: 48px;
       }
 
@@ -6250,7 +6521,8 @@
         .shell.board-mode .news-host,
         .shell.ranking-mode .news-host,
         .shell.futures-mode .news-host,
-        .shell.audit-mode .news-host {
+        .shell.audit-mode .news-host,
+        .shell.exchange-history-mode .news-host {
           padding-top: 28px;
         }
 
@@ -6328,22 +6600,26 @@
       </div>
       <div class="market-only">
         <div class="summary" id="summaryStats">
-          <article class="stat" id="statCardBinance" data-stat-board="binance">
+          <button class="stat" id="statCardBinance" data-stat-board="binance" type="button" aria-label="바이낸스 USDT 변경 내역 보기">
             <div class="stat-label" id="statLabelBinance"></div>
             <div class="stat-value" id="statBinance">-</div>
-          </article>
-          <article class="stat" id="statCardUpbit" data-stat-board="upbit">
+            <span class="stat-history-hint">변경 내역 보기</span>
+          </button>
+          <button class="stat" id="statCardUpbit" data-stat-board="upbit" type="button" aria-label="업비트 KRW 변경 내역 보기">
             <div class="stat-label" id="statLabelUpbit"></div>
             <div class="stat-value" id="statUpbit">-</div>
-          </article>
-          <article class="stat" id="statCardBithumb" data-stat-board="bithumb">
+            <span class="stat-history-hint">변경 내역 보기</span>
+          </button>
+          <button class="stat" id="statCardBithumb" data-stat-board="bithumb" type="button" aria-label="빗썸 KRW 변경 내역 보기">
             <div class="stat-label" id="statLabelBithumb"></div>
             <div class="stat-value" id="statBithumb">-</div>
-          </article>
-          <article class="stat" id="statCardCoinbase" data-stat-board="coinbase">
+            <span class="stat-history-hint">변경 내역 보기</span>
+          </button>
+          <button class="stat" id="statCardCoinbase" data-stat-board="coinbase" type="button" aria-label="코인베이스 USD 변경 내역 보기">
             <div class="stat-label" id="statLabelCoinbase"></div>
             <div class="stat-value" id="statCoinbase">-</div>
-          </article>
+            <span class="stat-history-hint">변경 내역 보기</span>
+          </button>
         </div>
         <div class="auto-strip-slot summary-status-slot" id="summaryStatusSlot">
           <div class="auto-strip" id="autoStrip">
@@ -8301,6 +8577,13 @@
       let futuresQuery = "";
       let futuresPage = 1;
       let futuresSortDirection = "desc";
+      let exchangeHistoryExchange = "upbit";
+      let exchangeHistoryData = null;
+      let exchangeHistoryLoading = false;
+      let exchangeHistoryError = "";
+      let exchangeHistoryFilter = "all";
+      let exchangeHistoryPromise = null;
+      const exchangeHistoryCache = new Map();
       let upbitAuditData = null;
       let upbitAuditPromise = null;
       let upbitAuditError = "";
@@ -11080,7 +11363,156 @@
         `;
       }
 
+      const EXCHANGE_HISTORY_LABELS = {
+        upbit: "업비트 KRW",
+        bithumb: "빗썸 KRW",
+        binance: "바이낸스 USDT",
+        coinbase: "코인베이스 USD",
+      };
+
+      function formatExchangeHistoryTime(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric) || numeric <= 0) return "기록 없음";
+        const milliseconds = numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+        return new Date(milliseconds).toLocaleString("ko-KR", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+      }
+
+      function renderExchangeHistoryPanel() {
+        const exchange = EXCHANGE_HISTORY_LABELS[exchangeHistoryExchange] ? exchangeHistoryExchange : "upbit";
+        const label = EXCHANGE_HISTORY_LABELS[exchange];
+        const payload = exchangeHistoryData?.exchange === exchange ? exchangeHistoryData : null;
+        const currentStats = data?.stats?.[exchange] || {};
+        const total = Math.max(0, Math.floor(Number(payload?.total) || Number(currentStats.total) || 0));
+        const withCap = Math.max(0, Math.floor(Number(payload?.withCap) || Number(currentStats.withCap) || 0));
+        const allEvents = Array.isArray(payload?.events) ? payload.events : [];
+        const visibleEvents = exchangeHistoryFilter === "all"
+          ? allEvents
+          : allEvents.filter((event) => event?.type === exchangeHistoryFilter);
+        const latestAt = Math.max(0, Number(payload?.latestGeneratedAt) || Number(data?.generatedAt) || 0);
+
+        const contentMarkup = exchangeHistoryLoading && !payload
+          ? '<p class="exchange-history-loading">변경 내역을 불러오는 중입니다...</p>'
+          : exchangeHistoryError && !payload
+            ? `<div class="exchange-history-error">변경 내역을 불러오지 못했습니다.<button type="button" data-exchange-history-refresh>다시 시도</button></div>`
+            : visibleEvents.length
+              ? `<div class="exchange-history-list">${visibleEvents.map((event) => {
+                  const isListed = event?.type === "listed";
+                  const pair = String(event?.pair || event?.symbol || "-");
+                  const name = String(event?.name || event?.symbol || pair);
+                  const beforeTotal = Math.max(0, Math.floor(Number(event?.beforeTotal) || 0));
+                  const afterTotal = Math.max(0, Math.floor(Number(event?.afterTotal) || 0));
+                  const marketCap = Number(event?.marketCapUsd);
+                  return `
+                    <article class="exchange-history-event ${isListed ? "is-listed" : "is-delisted"}">
+                      <div class="exchange-history-event-kind">
+                        <span class="exchange-history-event-dot" aria-hidden="true"></span>
+                        <strong>${isListed ? "신규 마켓 감지" : "거래 지원 종료 감지"}</strong>
+                      </div>
+                      <div class="exchange-history-event-asset">
+                        <strong>${escapeHtml(name)}</strong>
+                        <span>${escapeHtml(pair)}</span>
+                      </div>
+                      <div class="exchange-history-event-count">
+                        <strong>${formatNumber(beforeTotal, 0)} → ${formatNumber(afterTotal, 0)}</strong>
+                        <span>전체 마켓 수</span>
+                      </div>
+                      <div class="exchange-history-event-meta">
+                        <strong>${escapeHtml(formatExchangeHistoryTime(event?.detectedAt))}</strong>
+                        <span>${Number.isFinite(marketCap) && marketCap > 0 ? `감지 당시 시총 ${escapeHtml(formatUsdShort(marketCap))}` : "10분 자동 비교 기록"}</span>
+                      </div>
+                    </article>
+                  `;
+                }).join("")}</div>`
+              : '<p class="exchange-history-empty">아직 조건에 맞는 변경 내역이 없습니다. 다음 자동 갱신부터 신규 마켓과 거래 지원 종료 기록이 여기에 누적됩니다.</p>';
+
+        newsPanel.innerHTML = `
+          <section class="exchange-history-shell">
+            <header class="exchange-history-head">
+              <div>
+                <p class="exchange-history-kicker">실시간 거래소 현황</p>
+                <h2 class="exchange-history-title">${escapeHtml(label)} 변경 내역</h2>
+                <p class="exchange-history-subtitle">10분 자동 갱신에서 거래 마켓 목록의 전후 차이를 감지해 기록합니다.</p>
+              </div>
+              <button class="exchange-history-back" type="button" data-exchange-history-back>시총으로</button>
+            </header>
+            <div class="exchange-history-summary" aria-label="${escapeAttr(label)} 현황 요약">
+              <div class="exchange-history-summary-item"><span>현재 전체</span><strong>${formatNumber(total, 0)}개</strong></div>
+              <div class="exchange-history-summary-item"><span>시총 확인</span><strong>${formatNumber(withCap, 0)}개</strong></div>
+              <div class="exchange-history-summary-item"><span>최근 목록 확인</span><strong>${escapeHtml(formatExchangeHistoryTime(latestAt))}</strong></div>
+              <div class="exchange-history-summary-item"><span>저장된 변경</span><strong>${formatNumber(Number(payload?.storedCount) || allEvents.length, 0)}건</strong></div>
+            </div>
+            <div class="exchange-history-toolbar">
+              <div class="exchange-history-filters" aria-label="변경 내역 필터">
+                <button class="exchange-history-filter${exchangeHistoryFilter === "all" ? " active" : ""}" type="button" data-exchange-history-filter="all">전체</button>
+                <button class="exchange-history-filter${exchangeHistoryFilter === "listed" ? " active" : ""}" type="button" data-exchange-history-filter="listed">신규 마켓</button>
+                <button class="exchange-history-filter${exchangeHistoryFilter === "delisted" ? " active" : ""}" type="button" data-exchange-history-filter="delisted">거래 지원 종료</button>
+              </div>
+              <button class="exchange-history-refresh" type="button" data-exchange-history-refresh ${exchangeHistoryLoading ? "disabled" : ""}>${exchangeHistoryLoading ? "확인 중" : "새로고침"}</button>
+            </div>
+            <p class="exchange-history-note">이 기록은 거래소의 공개 마켓 목록 변화를 자동 비교한 결과입니다. 공식 상장·거래 지원 종료 사유와 정확한 시행 시각은 각 거래소 공지를 함께 확인해 주세요.</p>
+            ${contentMarkup}
+          </section>
+        `;
+      }
+
+      async function requestExchangeHistory(exchange = exchangeHistoryExchange, force = false) {
+        const normalizedExchange = EXCHANGE_HISTORY_LABELS[exchange] ? exchange : "upbit";
+        if (!force && exchangeHistoryCache.has(normalizedExchange)) {
+          exchangeHistoryData = exchangeHistoryCache.get(normalizedExchange);
+          if (state.viewMode === "exchange-history") renderExchangeHistoryPanel();
+          return exchangeHistoryData;
+        }
+        if (exchangeHistoryPromise?.exchange === normalizedExchange) return exchangeHistoryPromise.promise;
+        exchangeHistoryLoading = true;
+        exchangeHistoryError = "";
+        if (state.viewMode === "exchange-history") renderExchangeHistoryPanel();
+        const promise = fetchServerAuth(`/api/exchange-history?exchange=${encodeURIComponent(normalizedExchange)}&limit=500`, {
+          method: "GET",
+          timeoutMs: 10000,
+          cache: "no-store",
+        })
+          .then((payload) => {
+            const normalized = payload && typeof payload === "object"
+              ? { ...payload, exchange: normalizedExchange }
+              : { exchange: normalizedExchange, events: [] };
+            exchangeHistoryCache.set(normalizedExchange, normalized);
+            if (exchangeHistoryExchange === normalizedExchange) exchangeHistoryData = normalized;
+            return normalized;
+          })
+          .catch((error) => {
+            exchangeHistoryError = String(error?.message || "exchange_history_load_failed");
+            throw error;
+          })
+          .finally(() => {
+            exchangeHistoryLoading = false;
+            if (exchangeHistoryPromise?.exchange === normalizedExchange) exchangeHistoryPromise = null;
+            if (state.viewMode === "exchange-history" && exchangeHistoryExchange === normalizedExchange) {
+              renderExchangeHistoryPanel();
+            }
+          });
+        exchangeHistoryPromise = { exchange: normalizedExchange, promise };
+        return promise;
+      }
+
+      function openExchangeHistory(exchange) {
+        exchangeHistoryExchange = EXCHANGE_HISTORY_LABELS[exchange] ? exchange : "upbit";
+        exchangeHistoryFilter = "all";
+        exchangeHistoryData = exchangeHistoryCache.get(exchangeHistoryExchange) || null;
+        setViewMode("exchange-history");
+      }
+
       function renderContentPanel() {
+        if (state.viewMode === "exchange-history") {
+          renderExchangeHistoryPanel();
+          return;
+        }
         if (state.viewMode === "board") {
           renderFreeBoard();
           return;
@@ -14953,7 +15385,7 @@
       }
 
       function renderCurrentView() {
-        if (state.viewMode === "news" || state.viewMode === "board" || state.viewMode === "ranking" || state.viewMode === "futures" || state.viewMode === "audit") {
+        if (state.viewMode === "news" || state.viewMode === "board" || state.viewMode === "ranking" || state.viewMode === "futures" || state.viewMode === "audit" || state.viewMode === "exchange-history") {
           renderContentPanel();
           return;
         }
@@ -15080,6 +15512,8 @@
           futuresQuery,
           futuresPage,
           futuresSortDirection,
+          exchangeHistoryExchange,
+          exchangeHistoryFilter,
           upbitAuditFilter,
           upbitAuditSort,
           upbitAuditQuery,
@@ -15144,6 +15578,13 @@
         futuresQuery = "";
         futuresPage = 1;
         futuresSortDirection = payload.futuresSortDirection === "asc" ? "asc" : "desc";
+        exchangeHistoryExchange = EXCHANGE_HISTORY_LABELS[payload.exchangeHistoryExchange]
+          ? String(payload.exchangeHistoryExchange)
+          : "upbit";
+        exchangeHistoryFilter = ["all", "listed", "delisted"].includes(payload.exchangeHistoryFilter)
+          ? String(payload.exchangeHistoryFilter)
+          : "all";
+        exchangeHistoryData = exchangeHistoryCache.get(exchangeHistoryExchange) || null;
         upbitAuditFilter = ["listed", "report", "low"].includes(payload.upbitAuditFilter)
           ? String(payload.upbitAuditFilter)
           : "listed";
@@ -15158,7 +15599,7 @@
       }
 
       function setViewMode(mode, options = {}) {
-        const requestedMode = ["news", "board", "ranking", "futures", "audit"].includes(mode) ? mode : "market";
+        const requestedMode = ["news", "board", "ranking", "futures", "audit", "exchange-history"].includes(mode) ? mode : "market";
         state.viewMode = requestedMode === "board" && !canAccessFreeBoard() ? "market" : requestedMode;
         const isMarketMode = state.viewMode === "market";
         const isNewsMode = state.viewMode === "news";
@@ -15166,12 +15607,14 @@
         const isRankingMode = state.viewMode === "ranking";
         const isFuturesMode = state.viewMode === "futures";
         const isAuditMode = state.viewMode === "audit";
+        const isExchangeHistoryMode = state.viewMode === "exchange-history";
         appShell.classList.toggle("news-mode", isNewsMode);
         appShell.classList.toggle("board-mode", isBoardMode);
         appShell.classList.toggle("ranking-mode", isRankingMode);
         appShell.classList.toggle("futures-mode", isFuturesMode);
         appShell.classList.toggle("audit-mode", isAuditMode);
-        marketToggleBtn.classList.toggle("active", isMarketMode);
+        appShell.classList.toggle("exchange-history-mode", isExchangeHistoryMode);
+        marketToggleBtn.classList.toggle("active", isMarketMode || isExchangeHistoryMode);
         newsToggleBtn.classList.toggle("active", isNewsMode);
         boardToggleBtn.classList.toggle("active", isBoardMode);
         rankingToggleBtn.classList.toggle("active", isRankingMode);
@@ -15186,8 +15629,11 @@
         } else {
           destroyMarketChart();
         }
-        if (isNewsMode || isBoardMode || isRankingMode || isFuturesMode || isAuditMode) {
+        if (isNewsMode || isBoardMode || isRankingMode || isFuturesMode || isAuditMode || isExchangeHistoryMode) {
           renderContentPanel();
+        }
+        if (isExchangeHistoryMode) {
+          requestExchangeHistory(exchangeHistoryExchange).catch((error) => console.error(error));
         }
         if (isAuditMode) {
           requestUpbitAuditData();
@@ -16007,6 +16453,27 @@
         const clickTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
         if (!clickTarget) return;
 
+        if (clickTarget.closest("[data-exchange-history-back]")) {
+          setViewMode("market");
+          return;
+        }
+
+        const exchangeHistoryFilterButton = clickTarget.closest("[data-exchange-history-filter]");
+        if (exchangeHistoryFilterButton) {
+          const nextFilter = String(exchangeHistoryFilterButton.dataset.exchangeHistoryFilter || "");
+          if (["all", "listed", "delisted"].includes(nextFilter)) {
+            exchangeHistoryFilter = nextFilter;
+            renderExchangeHistoryPanel();
+            writeAppHistoryState(true);
+          }
+          return;
+        }
+
+        if (clickTarget.closest("[data-exchange-history-refresh]")) {
+          await requestExchangeHistory(exchangeHistoryExchange, true).catch((error) => console.error(error));
+          return;
+        }
+
         if (clickTarget.closest("[data-audit-retry]")) {
           upbitAuditError = "";
           upbitAuditData = null;
@@ -16639,6 +17106,13 @@
 
       marketToggleBtn.addEventListener("click", () => {
         goHomeView();
+      });
+
+      summaryStats?.addEventListener("click", (event) => {
+        const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+        const card = target?.closest("[data-stat-board]");
+        if (!card) return;
+        openExchangeHistory(String(card.dataset.statBoard || ""));
       });
 
       document.getElementById("brandHomeButton")?.addEventListener("click", () => {
