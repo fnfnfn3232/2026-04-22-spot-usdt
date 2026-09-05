@@ -18,6 +18,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify board permissions and security
+        run: node --test server-auth/board-permissions.test.mjs server-auth/security-regression.test.mjs
+
       - name: Write Worker config
         working-directory: server-auth
         run: |

@@ -7442,6 +7442,7 @@
       let siteAuthConfirmed = false;
       let siteSessionRole = "";
       let siteSessionSubject = "";
+      let siteBoardReadApproved = false;
       let siteBoardWriteApproved = false;
       let selectedMarketChart = "bitcoin";
       let loadedMarketChart = "";
@@ -7566,11 +7567,11 @@
       }
 
       function canAccessFreeBoard() {
-        return isLocalPreview() || siteSessionRole === "admin" || siteBoardWriteApproved;
+        return isLocalPreview() || siteSessionRole === "admin" || siteBoardReadApproved;
       }
 
       function canWriteFreeBoard() {
-        return canAccessFreeBoard();
+        return isLocalPreview() || siteSessionRole === "admin" || (siteBoardReadApproved && siteBoardWriteApproved);
       }
 
       function clearFreeBoardAccessCache() {
@@ -7657,6 +7658,8 @@
         setServerAuthToken(payload.token);
         siteSessionRole = payload?.role === "member" ? "member" : "admin";
         siteSessionSubject = siteSessionRole === "member" ? String(payload?.subject || "") : "owner";
+        siteBoardReadApproved = siteSessionRole === "admin" || payload?.boardReadApproved === true
+          || (payload?.boardReadApproved === undefined && payload?.boardWriteApproved === true);
         siteBoardWriteApproved = siteSessionRole === "admin" || payload?.boardWriteApproved === true;
         syncBoardAccessUi();
         const expiresAt = Number(payload.expiresAt) || getServerAuthTokenExpiry(payload.token);
@@ -8335,7 +8338,7 @@
       }
 
       async function uploadFreeBoardAttachment(file, onProgress = null) {
-        if (!canWriteFreeBoard()) throw new Error("board_access_approval_required");
+        if (!canWriteFreeBoard()) throw new Error("board_write_approval_required");
         const contentType = String(file?.type || "application/octet-stream").toLowerCase() || "application/octet-stream";
         if (!file?.size || file.size > FREE_BOARD_MAX_UPLOAD_FILE_BYTES) {
           throw new Error("media_too_large");
@@ -8883,7 +8886,13 @@
       function getFreeBoardSaveErrorMessage(error) {
         const message = String(error?.message || "");
         const status = Math.max(0, Math.floor(Number(error?.status) || 0));
-        if (["board_access_approval_required", "board_write_approval_required"].includes(message) || status === 403) {
+        if (message === "board_daily_post_limit") {
+          return "하루에 글은 3개까지 등록할 수 있습니다. 한국시간 자정 이후 다시 작성해 주세요. 삭제한 글도 작성 횟수에 포함됩니다.";
+        }
+        if (message === "board_write_approval_required") {
+          return "글쓰기는 관리자의 별도 승인이 필요합니다. 게시판 열람과 첨부파일 다운로드는 계속 이용할 수 있습니다.";
+        }
+        if (message === "board_access_approval_required" || status === 403) {
           return "현재 계정은 게시판 접근 승인을 받지 않았습니다.";
         }
         if (message.includes("server_auth_failed") || status === 401) {
@@ -10498,7 +10507,7 @@
         if (freeBoardMode === "write" || freeBoardMode === "edit") {
           if (!canWriteFreeBoard()) {
             freeBoardMode = "list";
-            showFreeBoardMessage("현재 계정은 게시판 접근 승인을 받지 않았습니다.", true);
+            showFreeBoardMessage("글쓰기는 관리자의 별도 승인이 필요합니다.", true);
             renderFreeBoard();
             return;
           }
@@ -10525,6 +10534,7 @@
                 <form class="free-board-form" id="freeBoardForm">
                   <div>
                     <h2 class="free-board-title">${freeBoardMode === "edit" ? "글 수정" : "글쓰기"}</h2>
+                    ${siteSessionRole === "member" && freeBoardMode === "write" ? '<p class="free-board-desc">하루 최대 3개 · 한국시간 자정 초기화 · 삭제한 글 포함</p>' : ""}
                     <p class="free-board-desc">${freeBoardMode === "edit" ? (adminEditing || memberEditing ? "작성자 권한으로 비밀번호 입력 없이 수정합니다." : "작성 시 정한 글 비밀번호 또는 게시판관리 비밀번호로 수정합니다.") : "글 등록용 비밀번호를 따로 정합니다. 회원 작성자 권한으로도 나중에 수정/삭제할 수 있습니다."}</p>
                   </div>
                   <div class="free-board-compose-top">
@@ -11847,9 +11857,14 @@
         const actions = [];
         if (status === "pending") actions.push(["approve", "승인"], ["reject", "거절", true]);
         if (status === "active") {
-          actions.push(member?.boardWriteApproved
-            ? ["board-revoke", "게시판 권한 해제", true]
-            : ["board-approve", "게시판 승인"]);
+          actions.push(member?.boardReadApproved
+            ? ["board-revoke", "열람 권한 해제", true]
+            : ["board-approve", "열람·다운로드 승인"]);
+          if (member?.boardReadApproved) {
+            actions.push(member?.boardWriteApproved
+              ? ["board-write-revoke", "글쓰기 권한 해제", true]
+              : ["board-write-approve", "글쓰기 승인"]);
+          }
           actions.push(["revoke", "로그인 차단", true]);
         }
         if (status === "rejected") actions.push(["approve", "승인"]);
@@ -11876,7 +11891,9 @@
           const passwordState = member.passwordConfigured ? " · 비밀번호 설정됨" : " · 비밀번호 미설정";
           const emailState = Number(member.emailVerifiedAt) > 0 ? " · 이메일 인증됨" : " · 이메일 미인증";
           const boardState = member.status === "active"
-            ? (member.boardWriteApproved ? " · 게시판 접근 승인" : " · 게시판 접근 미승인")
+            ? (member.boardReadApproved
+              ? (member.boardWriteApproved ? " · 열람·다운로드 가능 · 글쓰기 승인 (하루 3개)" : " · 열람·다운로드만 가능")
+              : " · 게시판 열람 미승인")
             : "";
           return `
             <div class="admin-member-row">
@@ -11929,9 +11946,12 @@
           });
           adminMembers = Array.isArray(payload?.members) ? payload.members : [];
           const emailNote = payload?.emailSent === false ? " 상태는 저장됐지만 안내 이메일은 보내지 못했습니다." : "";
-          const actionMessage = action === "board-approve"
-            ? "게시판 접근 권한을 승인했습니다."
-            : (action === "board-revoke" ? "게시판 접근 권한을 해제했습니다." : "회원 상태를 변경했습니다.");
+          const actionMessage = ({
+            "board-approve": "게시판 열람·첨부파일 다운로드를 승인했습니다. 글쓰기는 별도 승인이 필요합니다.",
+            "board-revoke": "게시판 열람과 글쓰기 권한을 해제했습니다.",
+            "board-write-approve": "글쓰기를 승인했습니다. 하루 최대 3개까지 등록할 수 있습니다.",
+            "board-write-revoke": "글쓰기 권한을 해제했습니다. 열람·첨부파일 다운로드는 가능합니다.",
+          })[action] || "회원 상태를 변경했습니다.";
           setAdminMembersMessage(`${actionMessage}${emailNote}`, payload?.emailSent === false);
         } finally {
           adminMembersLoading = false;
@@ -12363,6 +12383,7 @@
         siteAuthConfirmed = false;
         siteSessionRole = "";
         siteSessionSubject = "";
+        siteBoardReadApproved = false;
         siteBoardWriteApproved = false;
         syncBoardAccessUi();
         destroyMarketChart("로그인 후 차트를 불러옵니다.");
@@ -12424,6 +12445,7 @@
           siteAuthConfirmed = true;
           siteSessionRole = "admin";
           siteSessionSubject = "owner";
+          siteBoardReadApproved = true;
           siteBoardWriteApproved = true;
           syncBoardAccessUi();
           setLockExtendCount(0);
@@ -12814,13 +12836,13 @@
         const action = String(button.dataset.memberAction || "");
         const memberId = String(button.dataset.memberId || "");
         const member = adminMembers.find((item) => item.id === memberId);
-        if (!member || !["approve", "restore", "reject", "revoke", "delete", "board-approve", "board-revoke"].includes(action)) return;
-        if (["reject", "revoke", "delete", "board-revoke"].includes(action)) {
+        if (!member || !["approve", "restore", "reject", "revoke", "delete", "board-approve", "board-revoke", "board-write-approve", "board-write-revoke"].includes(action)) return;
+        if (["reject", "revoke", "delete", "board-revoke", "board-write-revoke"].includes(action)) {
           const label = action === "delete"
             ? "기록을 완전히 삭제"
             : (action === "revoke"
               ? "로그인을 차단"
-              : (action === "board-revoke" ? "게시판 접근 권한을 해제" : "가입을 거절"));
+              : (action === "board-revoke" ? "게시판 접근 권한을 해제" : (action === "board-write-revoke" ? "글쓰기 권한을 해제" : "가입을 거절")));
           if (!window.confirm(`${member.email} 회원의 ${label}할까요?`)) return;
         }
         try {
@@ -16282,7 +16304,7 @@
         event.preventDefault();
 
         if (!canWriteFreeBoard()) {
-          showFreeBoardMessage("현재 계정은 게시판 접근 승인을 받지 않았습니다.", true);
+          showFreeBoardMessage("글쓰기는 관리자의 별도 승인이 필요합니다.", true);
           return;
         }
 
@@ -16842,7 +16864,7 @@
 
         if (clickTarget.closest("[data-free-board-write]")) {
           if (!canWriteFreeBoard()) {
-            showFreeBoardMessage("현재 계정은 게시판 접근 승인을 받지 않았습니다.", true);
+            showFreeBoardMessage("글쓰기는 관리자의 별도 승인이 필요합니다.", true);
             renderFreeBoard();
             return;
           }

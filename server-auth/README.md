@@ -19,7 +19,9 @@ The current frontend is wired to use this API when `window.SERVER_AUTH_API_BASE`
 - Member passwords must be 8-20 characters, include both an English letter and a number, and cannot repeat the same character more than four times in a row.
 - Member passwords are stored only as salted `PBKDF2-SHA256` hashes using 100,000 iterations. Plaintext passwords are never emailed to the administrator or saved in member records. Existing 210,000-iteration hashes remain valid. The current count is chosen to keep signup and login within the Cloudflare Workers Free CPU allowance.
 - Approved members log in with their email address and chosen password. When a verified sender is configured, a forgotten password can be reset with a one-time code sent to that member's own email address.
-- Membership approval grants access to the main site, but not to the board. Board lists, posts, comments, attachments, and write operations require a separate `board-approve` action in the site admin panel. The Worker checks this permission for every board request; hiding frontend navigation is not the security boundary.
+- Membership approval grants access to the main site, but not to the board. `board-approve` allows reading posts/comments and downloading attachments. `board-write-approve` separately allows posts, comments, uploads, and managing content. Revoking writing preserves read access; revoking board access removes both. Existing approvals retain their permissions. Set a test member to read-only with `board-write-revoke`.
+- Members with writing approval may create 3 posts per calendar day in Asia/Seoul. Deleting a post does not refund its quota; comments and edits do not count, and administrators are exempt. The Worker commits the post and per-member daily counter in one storage transaction. Counters are included in daily backups.
+- Run `node --test server-auth/board-permissions.test.mjs server-auth/security-regression.test.mjs` from the repository root to check permissions and post limits.
 
 ## Required Cloudflare Worker environment variables
 

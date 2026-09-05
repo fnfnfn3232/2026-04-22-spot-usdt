@@ -25,6 +25,8 @@ const MEMBER_PASSWORD_RESET_GLOBAL_RATE_KEY = "member-password-reset-global-rate
 const MEMBER_SIGNUP_RATE_KEY_PREFIX = "member-signup-rate-v2:";
 const MEMBER_SIGNUP_GLOBAL_RATE_KEY = "member-signup-global-rate-v2";
 const MEMBERS_KEY = "site-members-v1";
+const BOARD_DAILY_POST_LIMIT = 3;
+const BOARD_DAILY_POST_KEY_PREFIX = "board-daily-posts:";
 const MEMBER_MAX_ITEMS = 200;
 const BOARD_MAX_POSTS = 200;
 const BOARD_MAX_MEDIA = 10;
@@ -722,7 +724,9 @@ function normalizeMemberRecord(raw) {
     passwordIterations: Math.max(100000, Math.floor(Number(raw.passwordIterations) || MEMBER_PASSWORD_LEGACY_ITERATIONS)),
     authVersion: Math.max(1, Math.floor(Number(raw.authVersion) || 1)),
     status: normalizeMemberStatus(raw.status),
-    boardWriteApproved: raw.boardWriteApproved === true,
+    boardReadApproved: raw.boardReadApproved === true
+      || (raw.boardReadApproved === undefined && raw.boardWriteApproved === true),
+    boardWriteApproved: raw.boardReadApproved !== false && raw.boardWriteApproved === true,
     boardWriteApprovedAt: Math.max(0, Math.floor(Number(raw.boardWriteApprovedAt) || 0)),
     requestedAt: Math.max(0, Math.floor(Number(raw.requestedAt) || 0)),
     emailVerifiedAt: Math.max(0, Math.floor(Number(raw.emailVerifiedAt) || 0)),
@@ -815,6 +819,7 @@ function sessionPayload(token, claims = null) {
     expiresAt: Number.isFinite(expiresAt) ? expiresAt : 0,
     role: claims?.role === "member" ? "member" : "admin",
     subject: claims?.role === "member" ? String(claims.subject || "") : "owner",
+    boardReadApproved: claims?.role !== "member" || claims?.boardReadApproved === true,
     boardWriteApproved: claims?.role !== "member" || claims?.boardWriteApproved === true,
   };
 }
@@ -1348,7 +1353,7 @@ async function requireBoardAccessStoredAuth(request, env) {
   }));
   if (!response.ok) return jsonResponse({ error: "auth_required" }, 401, env);
   const payload = await response.json().catch(() => null);
-  return payload?.role === "admin" || payload?.boardWriteApproved === true
+  return payload?.role === "admin" || payload?.boardReadApproved === true
     ? null
     : jsonResponse({ error: "board_access_approval_required" }, 403, env);
 }
@@ -2380,8 +2385,8 @@ export class BoardStore {
     this.env = env;
   }
 
-  async readMembers() {
-    const stored = await this.state.storage.get(MEMBERS_KEY);
+  async readMembers(storage = this.state.storage) {
+    const stored = await storage.get(MEMBERS_KEY);
     if (!Array.isArray(stored)) return [];
     return stored
       .map((member) => normalizeMemberRecord(member))
@@ -2403,17 +2408,17 @@ export class BoardStore {
   async getActiveSessionClaims(request) {
     const claims = await getRequestSessionClaims(request, this.env);
     if (!claims) return null;
-    if (claims.role === "admin") return { ...claims, boardWriteApproved: true };
+    if (claims.role === "admin") return { ...claims, boardReadApproved: true, boardWriteApproved: true };
     const member = (await this.readMembers()).find((item) => item.id === claims.subject);
     return member?.status === "active" && member.authVersion === claims.authVersion
-      ? { ...claims, boardWriteApproved: member.boardWriteApproved === true }
+      ? { ...claims, boardReadApproved: member.boardReadApproved === true, boardWriteApproved: member.boardWriteApproved === true }
       : null;
   }
 
   async getBoardAccessClaims(request) {
     const claims = await this.getActiveSessionClaims(request);
     if (!claims) return { claims: null, response: jsonResponse({ error: "auth_required" }, 401, this.env) };
-    if (claims.role === "admin" || claims.boardWriteApproved === true) return { claims, response: null };
+    if (claims.role === "admin" || claims.boardReadApproved === true) return { claims, response: null };
     return {
       claims,
       response: jsonResponse({ error: "board_access_approval_required" }, 403, this.env),
@@ -2423,6 +2428,12 @@ export class BoardStore {
   async requireActiveAuth(request) {
     if (await this.getActiveSessionClaims(request)) return null;
     return jsonResponse({ error: "auth_required" }, 401, this.env);
+  }
+
+  async getBoardWriteClaims(request) {
+    const access = await this.getBoardAccessClaims(request);
+    if (access.response || access.claims.role === "admin" || access.claims.boardWriteApproved === true) return access;
+    return { claims: access.claims, response: jsonResponse({ error: "board_write_approval_required" }, 403, this.env) };
   }
 
   async requireAdminAuth(request, body = null) {
@@ -2442,8 +2453,8 @@ export class BoardStore {
     return new Response(JSON.stringify(sessionPayload(token, claims)), { status: 200, headers });
   }
 
-  async readPosts() {
-    const stored = await this.state.storage.get(BOARD_POSTS_KEY);
+  async readPosts(storage = this.state.storage) {
+    const stored = await storage.get(BOARD_POSTS_KEY);
     if (!Array.isArray(stored)) return [];
     return stored
       .map((post) => normalizeBoardPost(post))
@@ -2452,14 +2463,51 @@ export class BoardStore {
       .slice(0, BOARD_MAX_POSTS);
   }
 
-  async writePosts(posts) {
+  async writePosts(posts, storage = this.state.storage) {
     const normalized = (Array.isArray(posts) ? posts : [])
       .map((post) => normalizeBoardPost(post))
       .filter(Boolean)
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, BOARD_MAX_POSTS);
-    await this.state.storage.put(BOARD_POSTS_KEY, normalized);
+    await storage.put(BOARD_POSTS_KEY, normalized);
     return normalized;
+  }
+
+  async createPostWithDailyLimit(post, claims) {
+    // Commit the post and quota together so concurrent requests and deletions cannot reset the limit.
+    return this.state.storage.transaction(async (storage) => {
+      const now = Date.now();
+      const day = new Date(now + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const dayStart = Date.parse(`${day}T00:00:00+09:00`);
+      const posts = await this.readPosts(storage);
+      if (claims.role === "member") {
+        const member = (await this.readMembers(storage)).find((item) => item.id === claims.subject);
+        if (!member || member.status !== "active" || member.authVersion !== claims.authVersion) {
+          return { error: "auth_required", status: 401 };
+        }
+        if (!member.boardReadApproved || !member.boardWriteApproved) {
+          return { error: "board_write_approval_required", status: 403 };
+        }
+        const key = `${BOARD_DAILY_POST_KEY_PREFIX}${claims.subject}`;
+        const usage = await storage.get(key);
+        const existingCount = posts.filter((item) => item.authorMemberId === claims.subject
+          && item.createdAt >= dayStart && item.createdAt < dayStart + 24 * 60 * 60 * 1000).length;
+        const count = Math.max(existingCount, usage?.day === day ? Number(usage.count) || 0 : 0);
+        if (count >= BOARD_DAILY_POST_LIMIT) {
+          await storage.put(key, { day, count });
+          return {
+            error: "board_daily_post_limit",
+            status: 429,
+            limit: BOARD_DAILY_POST_LIMIT,
+            resetsAt: dayStart + 24 * 60 * 60 * 1000,
+          };
+        }
+        await storage.put(key, { day, count: count + 1 });
+      }
+      post.createdAt = now;
+      posts.unshift(post);
+      return { posts: await this.writePosts(posts, storage), post };
+    });
   }
 
   async readCategories() {
@@ -2948,6 +2996,7 @@ export class BoardStore {
         news,
         marketData,
         exchangeHistory,
+        boardDailyPostCounts: Object.fromEntries(await this.state.storage.list({ prefix: BOARD_DAILY_POST_KEY_PREFIX })),
         media: mediaResult.media,
       },
     };
@@ -3461,12 +3510,14 @@ export class BoardStore {
       member.updatedAt = Date.now();
       await this.writeMembers(members);
       record.authVersion = member.authVersion;
+      record.boardReadApproved = member.boardReadApproved === true;
       record.boardWriteApproved = member.boardWriteApproved === true;
     }
     const claims = {
       role: record.role,
       subject: record.subject,
       authVersion: record.authVersion,
+      boardReadApproved: record.role === "admin" || record.boardReadApproved === true,
       boardWriteApproved: record.role === "admin" || record.boardWriteApproved === true,
     };
     const token = await createSessionToken(this.env, claims);
@@ -3800,6 +3851,7 @@ export class BoardStore {
       role: "member",
       subject: member.id,
       authVersion: member.authVersion,
+      boardReadApproved: member.boardReadApproved === true,
       boardWriteApproved: member.boardWriteApproved === true,
     };
     const token = await createSessionToken(this.env, claims);
@@ -3940,19 +3992,30 @@ export class BoardStore {
       if (member.status !== "active") {
         return jsonResponse({ error: "member_not_active" }, 409, this.env);
       }
+      member.boardReadApproved = true;
+    } else if (action === "board-revoke") {
+      member.boardReadApproved = false;
+      member.boardWriteApproved = false;
+      member.boardWriteApprovedAt = 0;
+    } else if (action === "board-write-approve") {
+      if (member.status !== "active" || !member.boardReadApproved) {
+        return jsonResponse({ error: "board_access_approval_required" }, 409, this.env);
+      }
       member.boardWriteApproved = true;
       member.boardWriteApprovedAt = now;
-    } else if (action === "board-revoke") {
+    } else if (action === "board-write-revoke") {
       member.boardWriteApproved = false;
       member.boardWriteApprovedAt = 0;
     } else if (action === "reject") {
       member.status = "rejected";
       member.rejectedAt = now;
+      member.boardReadApproved = false;
       member.boardWriteApproved = false;
       member.boardWriteApprovedAt = 0;
     } else if (action === "revoke") {
       member.status = "revoked";
       member.revokedAt = now;
+      member.boardReadApproved = false;
       member.boardWriteApproved = false;
       member.boardWriteApprovedAt = 0;
     } else if (action === "delete") {
@@ -3964,9 +4027,13 @@ export class BoardStore {
     }
     member.updatedAt = now;
     await this.writeMembers(members);
-    const statusText = action === "board-approve"
-      ? "board access approved"
-      : (action === "board-revoke" ? "board access revoked" : (member.status === "active" ? "approved" : member.status));
+    const boardStatusMessages = {
+      "board-approve": ["board read access approved", "You can now read the board and download attachments. Posting requires separate administrator approval."],
+      "board-revoke": ["board access revoked", "Your board access has been revoked. Your site membership remains active."],
+      "board-write-approve": ["board writing approved", "You can now create posts and comments and manage your own content. Members may create up to 3 posts per day, resetting at midnight Korea time."],
+      "board-write-revoke": ["board writing revoked", "Your board writing permission has been revoked. You can still read the board and download attachments."],
+    };
+    const statusText = boardStatusMessages[action]?.[0] || (member.status === "active" ? "approved" : member.status);
     let emailSent = null;
     if (isMemberEmailDeliveryConfigured(this.env)) {
       emailSent = true;
@@ -3974,13 +4041,9 @@ export class BoardStore {
         await sendMemberEmail({
           recipient: member.email,
           subject: `ComaCap membership ${statusText}`,
-          text: action === "board-approve"
-            ? "Your ComaCap board access has been approved. You can now read the board, download attachments, and create or manage posts you own."
-            : (action === "board-revoke"
-              ? "Your ComaCap board access has been revoked. Your site membership remains active, but the board and its attachments are no longer accessible."
-              : (member.status === "active"
+          text: boardStatusMessages[action]?.[1] || (member.status === "active"
                 ? "Your ComaCap membership has been approved. You can now log in with your email address and the password you chose during signup. Board access requires separate administrator approval."
-                : `Your ComaCap membership status is now ${member.status}.`)),
+                : `Your ComaCap membership status is now ${member.status}.`),
           idempotencyKey: `coin-member-${action}-${member.id}-${now}`,
         }, this.env);
       } catch (error) {
@@ -4035,7 +4098,7 @@ export class BoardStore {
     if (request.method === "GET" && url.pathname === "/api/session/check") {
       const claims = await this.getActiveSessionClaims(request);
       return claims
-        ? jsonResponse({ ok: true, role: claims.role, boardWriteApproved: claims.boardWriteApproved === true }, 200, this.env)
+        ? jsonResponse({ ok: true, role: claims.role, boardReadApproved: claims.boardReadApproved === true, boardWriteApproved: claims.boardWriteApproved === true }, 200, this.env)
         : jsonResponse({ error: "auth_required" }, 401, this.env);
     }
     if (request.method === "POST" && url.pathname.startsWith("/api/admin/members")) {
@@ -4073,6 +4136,11 @@ export class BoardStore {
     if (isBoardAccessPath(url)) {
       const access = await this.getBoardAccessClaims(request);
       if (access.response) return access.response;
+      const isViewCount = request.method === "POST" && /^\/api\/board\/posts\/[^/]+\/view$/.test(url.pathname);
+      if (!["GET", "HEAD"].includes(request.method) && !isViewCount) {
+        const writeAccess = await this.getBoardWriteClaims(request);
+        if (writeAccess.response) return writeAccess.response;
+      }
     }
 
     if (url.pathname === "/api/screen-settings") {
@@ -4176,7 +4244,7 @@ export class BoardStore {
     }
 
     if (request.method === "POST" && url.pathname === "/api/board/posts") {
-      const access = await this.getBoardAccessClaims(request);
+      const access = await this.getBoardWriteClaims(request);
       if (access.response) return access.response;
       const body = await parseJsonBody(request);
       const postPassword = cleanBoardText(body?.postPassword, 200);
@@ -4184,16 +4252,19 @@ export class BoardStore {
       if (hasUnsafeBoardHtml(body)) return jsonResponse({ error: "unsafe_html" }, 400, this.env);
       const post = normalizeBoardPost({
         ...body,
-        authorMemberId: access.claims?.role === "member" ? access.claims.subject : "",
-      }, {
         id: `post-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
         createdAt: Date.now(),
+        updatedAt: undefined,
+        comments: [],
+        views: 0,
+        likes: 0,
+        authorMemberId: access.claims?.role === "member" ? access.claims.subject : "",
       });
       if (!post) return jsonResponse({ error: "invalid_post" }, 400, this.env);
       post.passwordHash = await sha256Hex(postPassword);
-      const posts = (await this.readPosts()).filter((item) => item.id !== post.id);
-      posts.unshift(post);
-      return boardJsonResponse(await this.writePosts(posts), 201, this.env, { post });
+      const result = await this.createPostWithDailyLimit(post, access.claims);
+      if (result.error) return jsonResponse(result, result.status, this.env);
+      return boardJsonResponse(result.posts, 201, this.env, { post: result.post });
     }
 
     if (request.method === "POST" && postId && url.pathname.endsWith("/view")) {
