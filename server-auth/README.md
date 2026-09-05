@@ -158,6 +158,21 @@ The deploy workflow creates and uses two private R2 buckets:
 
 No public R2 URL or download route is enabled for `coin-site-backups`. The Cloudflare API token needs permission to deploy Workers and manage/read/write R2 buckets.
 
+## Member and attachment security
+
+- Active members can read/download. Posting requires a separate administrator grant and remains limited to three new posts per Korea calendar day.
+- Only the owning member or an authenticated administrator can modify/delete a post or comment. Legacy post passwords no longer bypass member ownership. Records without a member owner are administrator-managed.
+- Upload sessions are bound to the initiating account. Chunk writes and completion are serialized per upload; temporary Durable Object chunks are removed after completion. In-progress legacy member uploads without ownership metadata must be restarted after deployment.
+- JSON/form/password API bodies are capped at 256 KiB while streaming. Binary requests are capped at 8 MiB. The normal chunked uploader still supports files up to 200 MiB. This is not an aggregate storage quota.
+- All administrator password checks share the login failure limit, including concurrent requests. The public Worker overwrites the internal client-IP forwarding header.
+- Session refresh preserves the session identity. Explicit logout revokes that session identity in storage, including refreshed token copies; a new login creates a new identity. Existing cookies and member approvals do not require a migration. Historical tokens from refreshes before this release have separate identities and expire according to their original 24-hour lifetime.
+- An explicit bearer token cannot inherit a different account's cookie privileges. Authentication fails closed when the authentication storage binding is absent.
+- Board mutations are serialized because posts/comments/views share a single storage record.
+
+Run `node --test server-auth/board-permissions.test.mjs server-auth/security-regression.test.mjs` for permission, concurrency, session, upload, request-size and existing HTML/download-header regressions. These are isolated tests, not a third-party penetration test.
+
+Attachments are served through the authenticated Worker with restrictive content types and response headers. No antivirus engine scans attachment contents: downloaded archives, executables, documents or HTML may still be unsafe when opened locally. Never publish private member or board data into the public GitHub repository; static GitHub files are not protected by the Worker login.
+
 ## Automatic R2 backups
 
 The Worker runs a scheduled backup every day at 03:17 KST (18:17 UTC).

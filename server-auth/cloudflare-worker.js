@@ -2,6 +2,8 @@ const COINNESS_NEWS_ENDPOINT = "https://api.coinness.com/feed/v1/breaking-news";
 const COOKIE_NAME = "coin_board_session";
 const PARTITIONED_COOKIE_NAME = "__Host-coin_board_session_partitioned";
 const SESSION_TTL_SECONDS = 24 * 60 * 60;
+const REVOKED_SESSION_KEY_PREFIX = "revoked-session:";
+const API_BODY_MAX_BYTES = 256 * 1024;
 const BOARD_POSTS_KEY = "free-board-posts";
 const BOARD_ADMIN_LOGS_KEY = "free-board-admin-logs";
 const BOARD_CATEGORIES_KEY = "free-board-categories";
@@ -787,7 +789,7 @@ function loginLockedResponse(record, env) {
 
 async function createSessionToken(env, claims = {}) {
   const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
-  const nonce = crypto.randomUUID();
+  const nonce = claims.nonce || crypto.randomUUID();
   const role = claims.role === "member" ? "member" : "admin";
   const subject = role === "member" && /^[0-9a-f-]{36}$/i.test(String(claims.subject || ""))
     ? String(claims.subject)
@@ -838,7 +840,7 @@ async function getSessionClaims(token, env) {
     if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return null;
     const expected = await hmacHex(env.SESSION_SECRET, `${expText}.${nonce}`);
     return timingSafeEqual(signature, expected)
-      ? { role: "admin", subject: "legacy", expiresAt: exp * 1000, token }
+      ? { role: "admin", subject: "legacy", nonce, expiresAt: exp * 1000, token }
       : null;
   }
   if (parts.length === 6 && parts[0] === "v2") {
@@ -849,7 +851,7 @@ async function getSessionClaims(token, env) {
     if (role === "member" && !/^[0-9a-f-]{36}$/i.test(subject)) return null;
     const expected = await hmacHex(env.SESSION_SECRET, `${version}.${expText}.${nonce}.${role}.${subject}`);
     return timingSafeEqual(signature, expected)
-      ? { role, subject, authVersion: role === "member" ? 1 : 0, expiresAt: exp * 1000, token }
+      ? { role, subject, nonce, authVersion: role === "member" ? 1 : 0, expiresAt: exp * 1000, token }
       : null;
   }
   if (parts.length !== 7 || parts[0] !== "v3") return null;
@@ -862,7 +864,7 @@ async function getSessionClaims(token, env) {
   if (role === "member" && authVersion < 1) return null;
   const expected = await hmacHex(env.SESSION_SECRET, `${version}.${expText}.${nonce}.${role}.${subject}.${authVersion}`);
   return timingSafeEqual(signature, expected)
-    ? { role, subject, authVersion, expiresAt: exp * 1000, token }
+    ? { role, subject, nonce, authVersion, expiresAt: exp * 1000, token }
     : null;
 }
 
@@ -871,6 +873,8 @@ async function isValidSessionToken(token, env) {
 }
 
 async function getRequestSessionClaims(request, env) {
+  // Explicit tokens must not inherit another account's cookie permissions.
+  if (request.headers.has("Authorization")) return getSessionClaims(getBearerToken(request), env);
   const cookieTokens = [
     getCookie(request, COOKIE_NAME),
     getCookie(request, PARTITIONED_COOKIE_NAME),
@@ -1337,8 +1341,7 @@ async function requireAuth(request, env) {
 async function requireActiveStoredAuth(request, env) {
   const claims = await getRequestSessionClaims(request, env);
   if (!claims) return jsonResponse({ error: "auth_required" }, 401, env);
-  if (claims.role === "admin") return null;
-  if (!env.BOARD_STORE) return null;
+  if (!env.BOARD_STORE) return jsonResponse({ error: "auth_storage_unavailable" }, 503, env);
   const id = env.BOARD_STORE.idFromName("free-board");
   const response = await env.BOARD_STORE.get(id).fetch(new Request("https://board-store/api/session/check", {
     method: "GET",
@@ -1350,7 +1353,6 @@ async function requireActiveStoredAuth(request, env) {
 async function requireBoardAccessStoredAuth(request, env) {
   const claims = await getRequestSessionClaims(request, env);
   if (!claims) return jsonResponse({ error: "auth_required" }, 401, env);
-  if (claims.role === "admin") return null;
   if (!env.BOARD_STORE) return jsonResponse({ error: "board_access_approval_required" }, 403, env);
   const id = env.BOARD_STORE.idFromName("free-board");
   const response = await env.BOARD_STORE.get(id).fetch(new Request("https://board-store/api/session/check", {
@@ -1579,14 +1581,44 @@ async function canManageComment(comment, body, env) {
 
 async function canManagePostForClaims(post, body, claims, env) {
   if (claims?.role === "admin") return true;
-  if (claims?.role === "member" && post?.authorMemberId === claims.subject) return true;
-  return canManagePost(post, body, env);
+  return claims?.role === "member" && post?.authorMemberId === claims.subject;
 }
 
 async function canManageCommentForClaims(comment, body, claims, env) {
   if (claims?.role === "admin") return true;
-  if (claims?.role === "member" && comment?.authorMemberId === claims.subject) return true;
-  return canManageComment(comment, body, env);
+  return claims?.role === "member" && comment?.authorMemberId === claims.subject;
+}
+
+async function readBoundedRequestBody(request, maxBytes) {
+  if (Number(request.headers.get("Content-Length")) > maxBytes) {
+    await request.body?.cancel();
+    return null;
+  }
+  if (!request.body) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 function jsonRequestWithoutPassword(request, body) {
@@ -2389,6 +2421,8 @@ export class BoardStore {
   constructor(state, env) {
     this.state = state;
     this.env = env;
+    this.mediaUploadOperations = new Map();
+    this.boardPostsOperation = Promise.resolve();
   }
 
   async readMembers(storage = this.state.storage) {
@@ -2414,6 +2448,8 @@ export class BoardStore {
   async getActiveSessionClaims(request) {
     const claims = await getRequestSessionClaims(request, this.env);
     if (!claims) return null;
+    const revokedUntil = Number(await this.state.storage.get(`${REVOKED_SESSION_KEY_PREFIX}${claims.nonce}`)) || 0;
+    if (revokedUntil > Date.now()) return null;
     if (claims.role === "admin") return { ...claims, boardReadApproved: true, boardWriteApproved: true };
     const member = (await this.readMembers()).find((item) => item.id === claims.subject);
     return member?.status === "active" && member.authVersion === claims.authVersion
@@ -2444,10 +2480,49 @@ export class BoardStore {
 
   async requireAdminAuth(request, body = null) {
     const password = String(body?.adminPassword || body?.password || "");
-    if (password && await isAdminPassword(password, this.env)) return null;
+    if (password) return this.checkAdminPassword(request, password);
     const claims = await this.getActiveSessionClaims(request);
     if (claims?.role === "admin") return null;
     return jsonResponse({ error: password ? "invalid_password" : "admin_required" }, 401, this.env);
+  }
+
+  async checkAdminPassword(request, password) {
+    const attemptKey = await getLoginAttemptKey(getForwardedLoginClientIp(request));
+    const valid = await isAdminPassword(password, this.env);
+    const result = await this.state.storage.transaction(async (storage) => {
+      const now = Date.now();
+      let record = normalizeLoginAttemptRecord(await storage.get(attemptKey));
+      if (record.lockedUntil > now) return record;
+      if (record.lockedUntil) record = normalizeLoginAttemptRecord(null);
+      if (valid) {
+        await storage.delete(attemptKey);
+        return null;
+      }
+      const failures = Math.min(LOGIN_FAILURE_LIMIT, record.failures + 1);
+      const next = { failures, lockedUntil: failures >= LOGIN_FAILURE_LIMIT ? now + LOGIN_LOCK_MS : 0, updatedAt: now };
+      await storage.put(attemptKey, next);
+      return next;
+    });
+    if (!result) return null;
+    if (result.lockedUntil > Date.now()) return loginLockedResponse(result, this.env);
+    return jsonResponse({ error: "invalid_password", remainingAttempts: LOGIN_FAILURE_LIMIT - result.failures }, 401, this.env);
+  }
+
+  async handleLogoutRequest(request) {
+    const now = Date.now();
+    const tokens = new Set([getBearerToken(request), getCookie(request, COOKIE_NAME), getCookie(request, PARTITIONED_COOKIE_NAME)].filter(Boolean));
+    for (const token of tokens) {
+      const claims = await getSessionClaims(token, this.env);
+      if (claims) {
+        // Refreshes retain the nonce, invalidating older copies on logout as well.
+        await this.state.storage.put(`${REVOKED_SESSION_KEY_PREFIX}${claims.nonce}`, Math.max(claims.expiresAt, now + (SESSION_TTL_SECONDS + 60) * 1000));
+      }
+    }
+    const records = await this.state.storage.list({ prefix: REVOKED_SESSION_KEY_PREFIX });
+    for (const [key, expiresAt] of records) {
+      if (Number(expiresAt) <= now) await this.state.storage.delete(key);
+    }
+    return handleLogout(this.env);
   }
 
   async handleSessionRequest(request) {
@@ -3100,8 +3175,8 @@ export class BoardStore {
   async writeMedia(request) {
     const contentType = getBoardMediaContentType(request);
     if (!contentType) return jsonResponse({ error: "unsupported_media_type" }, 415, this.env);
-    const bytes = await request.arrayBuffer();
-    if (!bytes.byteLength || bytes.byteLength > BOARD_MEDIA_MAX_BYTES) {
+    const bytes = await readBoundedRequestBody(request, BOARD_MEDIA_R2_CHUNK_BYTES);
+    if (!bytes?.byteLength) {
       return jsonResponse({ error: "media_too_large" }, 413, this.env);
     }
     const id = `media-${Date.now()}-${crypto.randomUUID().slice(0, 12)}`;
@@ -3152,7 +3227,26 @@ export class BoardStore {
       storage: meta.storage === "r2" ? "r2" : "durable_object",
       mediaId: isSafeBoardMediaId(meta.mediaId) ? meta.mediaId : "",
       uploadedChunks: Array.isArray(meta.uploadedChunks) ? meta.uploadedChunks : [],
+      ownerRole: meta.ownerRole || "",
+      ownerSubject: meta.ownerSubject || "",
     };
+  }
+
+  async withMediaUploadLock(uploadId, callback) {
+    const previous = this.mediaUploadOperations.get(uploadId) || Promise.resolve();
+    const operation = previous.catch(() => {}).then(callback);
+    this.mediaUploadOperations.set(uploadId, operation);
+    try {
+      return await operation;
+    } finally {
+      if (this.mediaUploadOperations.get(uploadId) === operation) this.mediaUploadOperations.delete(uploadId);
+    }
+  }
+
+  async canManageMediaUpload(request, meta) {
+    const claims = await this.getActiveSessionClaims(request);
+    return claims?.role === "admin" || (claims?.role === "member"
+      && meta.ownerRole === "member" && meta.ownerSubject === claims.subject);
   }
 
   async deleteMediaUpload(uploadId, meta, options = {}) {
@@ -3183,6 +3277,8 @@ export class BoardStore {
   }
 
   async createMediaUpload(request) {
+    const access = await this.getBoardWriteClaims(request);
+    if (access.response) return access.response;
     await this.cleanupExpiredMediaUploads();
     const body = await parseJsonBody(request);
     const size = Math.max(0, Math.floor(Number(body?.size) || 0));
@@ -3197,6 +3293,8 @@ export class BoardStore {
     const meta = {
       uploadId,
       mediaId,
+      ownerRole: access.claims.role,
+      ownerSubject: access.claims.subject,
       fileName: cleanBoardMediaFileName(body?.fileName || "attachment"),
       contentType: normalizeBoardMediaContentType(body?.contentType),
       size,
@@ -3220,6 +3318,7 @@ export class BoardStore {
   async writeMediaUploadChunk(request, uploadId, index) {
     const meta = await this.readMediaUpload(uploadId);
     if (!meta) return jsonResponse({ error: "upload_not_found" }, 404, this.env);
+    if (!await this.canManageMediaUpload(request, meta)) return jsonResponse({ error: "upload_owner_required" }, 403, this.env);
     if (Date.now() - meta.createdAt > BOARD_MEDIA_UPLOAD_MAX_AGE_MS) {
       await this.deleteMediaUpload(uploadId, meta);
       return jsonResponse({ error: "upload_expired" }, 410, this.env);
@@ -3227,8 +3326,9 @@ export class BoardStore {
     if (!Number.isInteger(index) || index < 0 || index >= meta.chunkCount) {
       return jsonResponse({ error: "invalid_chunk_index" }, 400, this.env);
     }
-    const bytes = await request.arrayBuffer();
     const expectedSize = this.expectedMediaUploadChunkSize(meta, index);
+    const bytes = await readBoundedRequestBody(request, expectedSize);
+    if (!bytes) return jsonResponse({ error: "media_too_large" }, 413, this.env);
     if (!bytes.byteLength || bytes.byteLength !== expectedSize) {
       return jsonResponse({ error: "invalid_chunk_size", expectedSize, actualSize: bytes.byteLength }, 400, this.env);
     }
@@ -3250,6 +3350,7 @@ export class BoardStore {
   async completeMediaUpload(request, uploadId) {
     const meta = await this.readMediaUpload(uploadId);
     if (!meta) return jsonResponse({ error: "upload_not_found" }, 404, this.env);
+    if (!await this.canManageMediaUpload(request, meta)) return jsonResponse({ error: "upload_owner_required" }, 403, this.env);
     if (Date.now() - meta.createdAt > BOARD_MEDIA_UPLOAD_MAX_AGE_MS) {
       await this.deleteMediaUpload(uploadId, meta);
       return jsonResponse({ error: "upload_expired" }, 410, this.env);
@@ -3292,7 +3393,7 @@ export class BoardStore {
       chunkCount: meta.chunkCount,
       storage: meta.storage,
     });
-    await this.deleteMediaUpload(uploadId, meta, { deleteChunks: false });
+    await this.deleteMediaUpload(uploadId, meta, { deleteChunks: meta.storage !== "r2" });
     const url = new URL(request.url);
     url.pathname = `/api/board/media/${id}`;
     url.search = "";
@@ -3307,39 +3408,8 @@ export class BoardStore {
       return jsonResponse({ error: "invalid_json" }, 400, this.env);
     }
 
-    const now = Date.now();
-    const attemptKey = await getLoginAttemptKey(getForwardedLoginClientIp(request));
-    let record = normalizeLoginAttemptRecord(await this.state.storage.get(attemptKey));
-
-    if (record.lockedUntil > now) {
-      return loginLockedResponse(record, this.env);
-    }
-    if (record.lockedUntil && record.lockedUntil <= now) {
-      record = normalizeLoginAttemptRecord(null);
-      await this.state.storage.delete(attemptKey);
-    }
-
-    const passwordHash = await sha256Hex(body.password || "");
-    const passwordValid = timingSafeEqual(passwordHash, this.env.SITE_PASSWORD_SHA256);
-
-    if (!passwordValid) {
-      const failures = Math.min(LOGIN_FAILURE_LIMIT, record.failures + 1);
-      const nextRecord = {
-        failures,
-        lockedUntil: failures >= LOGIN_FAILURE_LIMIT ? now + LOGIN_LOCK_MS : 0,
-        updatedAt: now,
-      };
-      await this.state.storage.put(attemptKey, nextRecord);
-      if (nextRecord.lockedUntil > now) {
-        return loginLockedResponse(nextRecord, this.env);
-      }
-      return jsonResponse({
-        error: "invalid_password",
-        remainingAttempts: Math.max(0, LOGIN_FAILURE_LIMIT - failures),
-      }, 401, this.env);
-    }
-
-    await this.state.storage.delete(attemptKey);
+    const authResponse = await this.checkAdminPassword(request, body?.password || "");
+    if (authResponse) return authResponse;
     const token = await createSessionToken(this.env);
     const headers = new Headers(jsonResponse({ ok: true }, 200, this.env).headers);
     appendSessionCookies(headers, token);
@@ -4068,6 +4138,17 @@ export class BoardStore {
   }
 
   async fetch(request) {
+    const path = new URL(request.url).pathname;
+    if (!["GET", "HEAD"].includes(request.method) && (path === "/api/board/posts" || path.startsWith("/api/board/posts/"))) {
+      // Posts share one storage record; serialize read-modify-write requests.
+      const operation = this.boardPostsOperation.catch(() => {}).then(() => this.handleRequest(request));
+      this.boardPostsOperation = operation.catch(() => {});
+      return operation;
+    }
+    return this.handleRequest(request);
+  }
+
+  async handleRequest(request) {
     const url = new URL(request.url);
     const postId = decodeURIComponent(url.pathname.replace(/^\/api\/board\/posts\/?/, ""));
 
@@ -4082,6 +4163,15 @@ export class BoardStore {
 
     if (request.method === "POST" && url.pathname === "/api/login") {
       return this.handleLoginRequest(request);
+    }
+    if (request.method === "POST" && url.pathname === "/api/logout") {
+      return this.handleLogoutRequest(request);
+    }
+    if (request.method === "POST" && url.pathname === "/api/admin/verify") {
+      const body = await parseJsonOrPlainPasswordBody(request);
+      const password = body?.adminPassword || body?.password || "";
+      if (!password) return jsonResponse({ error: "auth_required" }, 401, this.env);
+      return await this.checkAdminPassword(request, password) || jsonResponse({ ok: true }, 200, this.env);
     }
     if (request.method === "POST" && url.pathname === "/api/login/email/request") {
       return this.handleEmailOtpRequest(request);
@@ -4158,9 +4248,8 @@ export class BoardStore {
       }
       if (request.method === "PUT" || request.method === "POST") {
         const body = await parseJsonBody(request);
-        if (!await isAdminPassword(body?.adminPassword || body?.password || "", this.env)) {
-          return jsonResponse({ error: "invalid_password" }, 401, this.env);
-        }
+        const authResponse = await this.requireAdminAuth(request, body);
+        if (authResponse) return authResponse;
         return jsonResponse({ settings: await this.writeScreenSettings(body?.settings || body) }, 200, this.env);
       }
     }
@@ -4189,9 +4278,8 @@ export class BoardStore {
 
     if (request.method === "POST" && url.pathname === "/api/board/logs") {
       const body = await parseJsonBody(request);
-      if (!await isAdminPassword(body?.adminPassword || body?.password || "", this.env)) {
-        return jsonResponse({ error: "invalid_password" }, 401, this.env);
-      }
+      const authResponse = await this.requireAdminAuth(request, body);
+      if (authResponse) return authResponse;
       return jsonResponse({ logs: await this.readAdminLogs() }, 200, this.env);
     }
 
@@ -4203,9 +4291,8 @@ export class BoardStore {
       }
       if (request.method === "PUT" || request.method === "POST") {
         const body = await parseJsonBody(request);
-        if (!await isAdminPassword(body?.adminPassword || body?.password || "", this.env)) {
-          return jsonResponse({ error: "invalid_password" }, 401, this.env);
-        }
+        const authResponse = await this.requireAdminAuth(request, body);
+        if (authResponse) return authResponse;
         return jsonResponse({ categories: await this.writeCategories(body?.categories || []) }, 200, this.env);
       }
     }
@@ -4228,11 +4315,11 @@ export class BoardStore {
 
     const mediaUploadRoute = parseBoardMediaUploadRoute(url);
     if (request.method === "POST" && mediaUploadRoute?.action === "chunk") {
-      return this.writeMediaUploadChunk(request, mediaUploadRoute.uploadId, mediaUploadRoute.index);
+      return this.withMediaUploadLock(mediaUploadRoute.uploadId, () => this.writeMediaUploadChunk(request, mediaUploadRoute.uploadId, mediaUploadRoute.index));
     }
 
     if (request.method === "POST" && mediaUploadRoute?.action === "complete") {
-      return this.completeMediaUpload(request, mediaUploadRoute.uploadId);
+      return this.withMediaUploadLock(mediaUploadRoute.uploadId, () => this.completeMediaUpload(request, mediaUploadRoute.uploadId));
     }
 
     if (request.method === "POST" && url.pathname === "/api/board/media") {
@@ -4312,6 +4399,8 @@ export class BoardStore {
       if (!target) return jsonResponse({ error: "not_found" }, 404, this.env);
       const comment = normalizeBoardComment({
         ...body,
+        id: `comment-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+        createdAt: Date.now(),
         authorMemberId: access.claims?.role === "member" ? access.claims.subject : "",
       }, {
         id: `comment-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
@@ -4536,6 +4625,34 @@ export default {
       return originNotAllowedResponse(env);
     }
 
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("X-Login-Client-IP", getClientIp(request));
+    if (!["GET", "HEAD"].includes(request.method)) {
+      const isMediaBody = url.pathname === "/api/board/media" || parseBoardMediaUploadRoute(url)?.action === "chunk";
+      let bytes;
+      try {
+        bytes = await readBoundedRequestBody(request, isMediaBody ? BOARD_MEDIA_R2_CHUNK_BYTES : API_BODY_MAX_BYTES);
+      } catch (_error) {
+        return jsonResponse({ error: "invalid_request_body" }, 400, env);
+      }
+      if (!bytes) return jsonResponse({ error: "request_too_large" }, 413, env);
+      const contentType = String(requestHeaders.get("Content-Type") || "").toLowerCase();
+      const isFormSession = url.pathname === "/api/session" && contentType.startsWith("application/x-www-form-urlencoded");
+      const isPlainPassword = ["/api/admin/verify", "/api/usage/stats"].includes(url.pathname) && contentType.includes("text/plain");
+      if (!isMediaBody && bytes.byteLength && !isFormSession && !isPlainPassword) {
+        try {
+          const body = JSON.parse(new TextDecoder().decode(bytes));
+          if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("invalid_json");
+        } catch (_error) {
+          return jsonResponse({ error: "invalid_json" }, 400, env);
+        }
+      }
+      requestHeaders.delete("Content-Length");
+      request = new Request(request, { headers: requestHeaders, body: bytes });
+    } else {
+      request = new Request(request, { headers: requestHeaders });
+    }
+
     if (url.pathname === "/api/login/email/status" && request.method === "GET") {
       const emailDestinations = getEmailLoginDestinations(env);
       return jsonResponse({
@@ -4568,30 +4685,23 @@ export default {
       const id = env.BOARD_STORE.idFromName("free-board");
       const headers = new Headers(request.headers);
       headers.set("X-Login-Client-IP", getClientIp(request));
-      return env.BOARD_STORE.get(id).fetch(new Request(request.url, {
-        method: request.method,
-        headers,
-        body: request.body,
-      }));
+      return env.BOARD_STORE.get(id).fetch(new Request(request, { headers }));
     }
     if (url.pathname === "/api/login" && request.method === "POST") {
       if (env.BOARD_STORE) {
         const id = env.BOARD_STORE.idFromName("free-board");
         const headers = new Headers(request.headers);
         headers.set("X-Login-Client-IP", getClientIp(request));
-        return env.BOARD_STORE.get(id).fetch(new Request(request.url, {
-          method: request.method,
-          headers,
-          body: request.body,
-        }));
+        return env.BOARD_STORE.get(id).fetch(new Request(request, { headers }));
       }
-      return handleLogin(request, env);
+      return jsonResponse({ error: "auth_storage_unavailable" }, 503, env);
     }
     if (url.pathname === "/api/logout" && request.method === "POST") {
-      return handleLogout(env);
+      if (!env.BOARD_STORE) return jsonResponse({ error: "auth_storage_unavailable" }, 503, env);
+      return env.BOARD_STORE.get(env.BOARD_STORE.idFromName("free-board")).fetch(request);
     }
     if (url.pathname === "/api/session" && ["GET", "POST"].includes(request.method)) {
-      if (!env.BOARD_STORE) return handleSession(request, env);
+      if (!env.BOARD_STORE) return jsonResponse({ error: "auth_storage_unavailable" }, 503, env);
       const id = env.BOARD_STORE.idFromName("free-board");
       if (request.method === "GET") return env.BOARD_STORE.get(id).fetch(request);
       const contentType = String(request.headers.get("Content-Type") || "").toLowerCase();
@@ -4613,15 +4723,8 @@ export default {
       }));
     }
     if (url.pathname === "/api/admin/verify" && request.method === "POST") {
-      const body = await parseJsonOrPlainPasswordBody(request);
-      const providedPassword = body?.adminPassword || body?.password || "";
-      if (!providedPassword) {
-        return jsonResponse({ error: "auth_required" }, 401, env);
-      }
-      if (!await isAdminPassword(providedPassword, env)) {
-        return jsonResponse({ error: "invalid_password" }, 401, env);
-      }
-      return jsonResponse({ ok: true }, 200, env);
+      if (!env.BOARD_STORE) return jsonResponse({ error: "auth_storage_unavailable" }, 503, env);
+      return env.BOARD_STORE.get(env.BOARD_STORE.idFromName("free-board")).fetch(request);
     }
     if (url.pathname === "/api/usage/stats" && request.method === "POST") {
       if (!env.BOARD_STORE) return jsonResponse({ error: "usage_storage_not_configured" }, 500, env);
