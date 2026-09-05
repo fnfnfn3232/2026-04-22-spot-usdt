@@ -157,6 +157,21 @@ SCHEDULED_DELISTINGS = {
             "detail": "거래지원 종료 2026.08.18 15:00 예정",
             "url": "https://m-feed.bithumb.com/notice/1654098",
         },
+        "STORJ": {
+            "deadline": "2026-09-14",
+            "detail": "거래지원 종료 2026.09.14 15:00 예정",
+            "url": "https://m-feed.bithumb.com/notice/1654491",
+        },
+        "TT": {
+            "deadline": "2026-09-14",
+            "detail": "거래지원 종료 2026.09.14 15:00 예정",
+            "url": "https://m-feed.bithumb.com/notice/1654491",
+        },
+        "JASMY": {
+            "deadline": "2026-09-14",
+            "detail": "거래지원 종료 2026.09.14 15:00 예정",
+            "url": "https://m-feed.bithumb.com/notice/1654491",
+        },
     },
     "coinbase": {
         "ACX": {
@@ -1526,7 +1541,7 @@ def fetch_bithumb() -> list[dict]:
         market_cap_krw = cap_map.get(coin_type)
         symbol = str(item.get("coinSymbol") or "").upper()
         risk_flags = scheduled_delisting_flags("bithumb", symbol)
-        if market_warning_by_symbol.get(symbol) == "CAUTION":
+        if not risk_flags and market_warning_by_symbol.get(symbol) == "CAUTION":
             risk_flags.append(
                 make_risk_flag(
                     "warning",
