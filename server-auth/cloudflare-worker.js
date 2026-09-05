@@ -25,6 +25,7 @@ const MEMBER_PASSWORD_RESET_GLOBAL_RATE_KEY = "member-password-reset-global-rate
 const MEMBER_SIGNUP_RATE_KEY_PREFIX = "member-signup-rate-v2:";
 const MEMBER_SIGNUP_GLOBAL_RATE_KEY = "member-signup-global-rate-v2";
 const MEMBERS_KEY = "site-members-v1";
+const BOARD_PERMISSION_VERSION = 2;
 const BOARD_DAILY_POST_LIMIT = 3;
 const BOARD_DAILY_POST_KEY_PREFIX = "board-daily-posts:";
 const MEMBER_MAX_ITEMS = 200;
@@ -715,6 +716,11 @@ function normalizeMemberRecord(raw) {
   const id = String(raw.id || "").trim();
   const email = normalizeEmailAddress(raw.email);
   if (!/^[0-9a-f-]{36}$/i.test(id) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+  const status = normalizeMemberStatus(raw.status);
+  const permissionsMigrated = raw.boardPermissionVersion === BOARD_PERMISSION_VERSION;
+  // Existing approved memberships start read-only; writing requires a new, separate admin approval.
+  const boardReadApproved = permissionsMigrated ? raw.boardReadApproved === true : status === "active";
+  const boardWriteApproved = permissionsMigrated && boardReadApproved && raw.boardWriteApproved === true;
   return {
     id,
     email,
@@ -723,11 +729,11 @@ function normalizeMemberRecord(raw) {
     passwordHash: String(raw.passwordHash || ""),
     passwordIterations: Math.max(100000, Math.floor(Number(raw.passwordIterations) || MEMBER_PASSWORD_LEGACY_ITERATIONS)),
     authVersion: Math.max(1, Math.floor(Number(raw.authVersion) || 1)),
-    status: normalizeMemberStatus(raw.status),
-    boardReadApproved: raw.boardReadApproved === true
-      || (raw.boardReadApproved === undefined && raw.boardWriteApproved === true),
-    boardWriteApproved: raw.boardReadApproved !== false && raw.boardWriteApproved === true,
-    boardWriteApprovedAt: Math.max(0, Math.floor(Number(raw.boardWriteApprovedAt) || 0)),
+    status,
+    boardPermissionVersion: BOARD_PERMISSION_VERSION,
+    boardReadApproved,
+    boardWriteApproved,
+    boardWriteApprovedAt: boardWriteApproved ? Math.max(0, Math.floor(Number(raw.boardWriteApprovedAt) || 0)) : 0,
     requestedAt: Math.max(0, Math.floor(Number(raw.requestedAt) || 0)),
     emailVerifiedAt: Math.max(0, Math.floor(Number(raw.emailVerifiedAt) || 0)),
     approvedAt: Math.max(0, Math.floor(Number(raw.approvedAt) || 0)),
@@ -3988,6 +3994,9 @@ export class BoardStore {
       member.approvedAt = now;
       member.rejectedAt = 0;
       member.revokedAt = 0;
+      member.boardReadApproved = true;
+      member.boardWriteApproved = false;
+      member.boardWriteApprovedAt = 0;
     } else if (action === "board-approve") {
       if (member.status !== "active") {
         return jsonResponse({ error: "member_not_active" }, 409, this.env);
@@ -4042,7 +4051,7 @@ export class BoardStore {
           recipient: member.email,
           subject: `ComaCap membership ${statusText}`,
           text: boardStatusMessages[action]?.[1] || (member.status === "active"
-                ? "Your ComaCap membership has been approved. You can now log in with your email address and the password you chose during signup. Board access requires separate administrator approval."
+                ? "Your ComaCap membership has been approved. You can now log in, read the board, and download attachments. Creating posts, comments, and uploads requires separate administrator approval."
                 : `Your ComaCap membership status is now ${member.status}.`),
           idempotencyKey: `coin-member-${action}-${member.id}-${now}`,
         }, this.env);

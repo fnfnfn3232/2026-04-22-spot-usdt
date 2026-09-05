@@ -30,6 +30,7 @@ async function fixture({ read = true, write = false } = {}) {
   const storage = new MemoryStorage();
   const member = normalizeMemberRecord({
     id: crypto.randomUUID(), email: "test@example.com", status: "active",
+    boardPermissionVersion: 2,
     boardReadApproved: read, boardWriteApproved: write, authVersion: 1,
   });
   await storage.put("site-members-v1", [member]);
@@ -58,10 +59,44 @@ async function fixture({ read = true, write = false } = {}) {
   return { store, storage, member, request, post, adminToken };
 }
 
-test("legacy board approval retains access; explicit read-only records cannot write", () => {
-  const base = { id: crypto.randomUUID(), email: "legacy@example.com", boardWriteApproved: true };
-  assert.equal(normalizeMemberRecord(base).boardReadApproved, true);
-  assert.equal(normalizeMemberRecord({ ...base, boardReadApproved: false }).boardWriteApproved, false);
+test("all existing active members migrate to read-only; migration is idempotent", () => {
+  const base = { id: crypto.randomUUID(), email: "legacy@example.com", status: "active" };
+  for (const permissions of [{}, { boardWriteApproved: true }, { boardReadApproved: false, boardWriteApproved: false }]) {
+    const migrated = normalizeMemberRecord({ ...base, ...permissions });
+    assert.equal(migrated.boardReadApproved, true);
+    assert.equal(migrated.boardWriteApproved, false);
+    assert.equal(migrated.boardWriteApprovedAt, 0);
+    assert.deepEqual(normalizeMemberRecord(migrated), migrated);
+  }
+  assert.equal(normalizeMemberRecord({ ...base, status: "pending" }).boardReadApproved, false);
+  assert.equal(normalizeMemberRecord({ ...base, boardPermissionVersion: 2, boardReadApproved: true, boardWriteApproved: true }).boardWriteApproved, true);
+  assert.equal(normalizeMemberRecord({ ...base, boardPermissionVersion: 2, boardReadApproved: false, boardWriteApproved: true }).boardWriteApproved, false);
+});
+
+test("membership approval and restoration automatically grant reading, never writing", async () => {
+  for (const [status, action] of [["pending", "approve"], ["revoked", "restore"]]) {
+    const f = await fixture({ read: false });
+    await f.storage.put("site-members-v1", [{ ...f.member, status, passwordSalt: "test-salt", passwordHash: "test-hash" }]);
+    assert.equal((await f.request("/api/board/posts")).status, 401);
+    assert.equal((await f.request(`/api/admin/members/${action}`, "POST", { memberId: f.member.id }, f.adminToken)).status, 200);
+    assert.equal((await f.request("/api/board/posts")).status, 200);
+    assert.equal((await f.request("/api/board/media/media-1234567890-12345678")).status, 200);
+    assert.equal((await f.post()).status, 403);
+  }
+});
+
+test("existing member sessions become read-only immediately and later write approval persists", async () => {
+  const f = await fixture({ write: true });
+  const { boardPermissionVersion, ...legacy } = f.member;
+  await f.storage.put("site-members-v1", [legacy]);
+  assert.equal((await f.request("/api/board/posts")).status, 200);
+  assert.equal((await f.post()).status, 403);
+  assert.equal((await f.request("/api/admin/members/board-write-approve", "POST", { memberId: f.member.id }, f.adminToken)).status, 200);
+  assert.equal((await f.post()).status, 201);
+  assert.equal((await f.store.readMembers())[0].boardWriteApproved, true);
+  assert.equal((await f.request("/api/admin/members/board-revoke", "POST", { memberId: f.member.id }, f.adminToken)).status, 200);
+  assert.equal((await f.request("/api/board/posts")).status, 403);
+  assert.equal((await f.store.readMembers())[0].boardReadApproved, false);
 });
 
 test("read-only member can read and download but every board mutation is denied", async () => {
