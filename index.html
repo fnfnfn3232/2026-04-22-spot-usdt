@@ -7250,11 +7250,13 @@
     }
 
     function saveLastGoodData(payload) {
-      if (!isValidBoardPayload(payload)) return;
+      if (!isValidBoardPayload(payload)) return false;
       try {
         localStorage.setItem(LAST_GOOD_DATA_KEY, JSON.stringify(payload));
+        return true;
       } catch (_error) {
         // Ignore localStorage quota errors to keep runtime stable.
+        return false;
       }
     }
 
@@ -7290,6 +7292,7 @@
     };
     const protectedBoardMediaCache = new Map();
     let marketDataLoaded = isValidBoardPayload(window.BOARD_DATA);
+    let marketDataLoadedFromServer = false;
     let marketDataLoadPromise = null;
     const cachedData = canUseLastGoodData() ? loadLastGoodData() : null;
     if (isValidBoardPayload(cachedData)) {
@@ -15441,13 +15444,19 @@
         if (hasServerAuth() && !isLocalPreview()) {
           if (isSiteLocked()) throw new Error("site_locked");
           const beforeGeneratedAt = Number(data.generatedAt) || 0;
-          const snapshotGeneratedAt = hasUsableMarketData(data) ? getMarketSnapshotGeneratedAt() : 0;
+          // A cached payload and its timestamp can get out of sync when browser
+          // storage is full. Always request one complete server snapshot after
+          // a page load before using the lightweight not-modified check.
+          const snapshotGeneratedAt = marketDataLoadedFromServer
+            ? getMarketSnapshotGeneratedAt()
+            : 0;
           const query = new URLSearchParams({ ts: String(Date.now()) });
           if (snapshotGeneratedAt > 0) query.set("since", String(snapshotGeneratedAt));
           marketDataLoadPromise = fetchServerAuth(`/api/market-data?${query.toString()}`, { method: "GET", timeoutMs: 12000 })
             .then((parsed) => {
               if (parsed?.notModified) {
                 marketDataLoaded = true;
+                marketDataLoadedFromServer = true;
                 return {
                   changed: false,
                   generatedAt: Math.max(0, Math.floor(Number(parsed.generatedAt) || snapshotGeneratedAt)),
@@ -15459,10 +15468,11 @@
               data = parsed;
               window.BOARD_DATA = parsed;
               marketDataLoaded = true;
-              setMarketSnapshotGeneratedAt(parsed.generatedAt);
+              marketDataLoadedFromServer = true;
               normalizeKnownAssetIdentities();
               normalizeKoreanAssetNames(parsed);
-              saveLastGoodData(data);
+              const saved = saveLastGoodData(data);
+              setMarketSnapshotGeneratedAt(saved ? parsed.generatedAt : 0);
               renderSummaryStats();
               renderAutoStatus();
               renderCurrentView();
