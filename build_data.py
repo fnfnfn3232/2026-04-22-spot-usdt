@@ -120,6 +120,31 @@ COINBASE_EXCLUDED_SYMBOLS = {
 SEOUL_TIMEZONE = timezone(timedelta(hours=9))
 SCHEDULED_DELISTINGS = {
     "upbit": {
+        "BONK": {
+            "deadline": "2026-09-07",
+            "detail": "거래지원 종료 2026.09.07 15:00 예정",
+            "url": "https://www.upbit.com/service_center/notice?id=1792805224&view=share",
+        },
+        "STORJ": {
+            "deadline": "2026-09-14",
+            "detail": "거래지원 종료 2026.09.14 15:00 예정",
+            "url": "https://www.upbit.com/service_center/notice?id=1661951230&view=share",
+        },
+        "JASMY": {
+            "deadline": "2026-09-14",
+            "detail": "거래지원 종료 2026.09.14 15:00 예정",
+            "url": "https://www.upbit.com/service_center/notice?id=1295640094&view=share",
+        },
+        "TT": {
+            "deadline": "2026-09-14",
+            "detail": "거래지원 종료 예정 (공식 공지 확인)",
+            "url": "https://www.upbit.com/service_center/notice?id=277265961&view=share",
+        },
+        "SNX": {
+            "deadline": "2026-09-28",
+            "detail": "거래지원 종료 2026.09.28 15:00 예정",
+            "url": "https://www.upbit.com/service_center/notice?id=1506400376&view=share",
+        },
         "AERGO": {
             "deadline": "2026-08-03",
             "detail": "거래지원 종료 2026.08.03 예정",
@@ -4306,9 +4331,33 @@ def make_payload(previous_payload: dict | None = None) -> dict:
     }
 
 
+def validate_scheduled_delisting_flags(payload: dict) -> None:
+    boards = payload.get("boards") if isinstance(payload, dict) else None
+    scheduled = payload.get("scheduledDelistings") if isinstance(payload, dict) else None
+    if not isinstance(boards, dict) or not isinstance(scheduled, dict):
+        raise ValueError("scheduled_delisting_validation_missing_data")
+    for exchange, entries in scheduled.items():
+        rows = boards.get(exchange)
+        if not isinstance(entries, dict) or not isinstance(rows, list):
+            continue
+        rows_by_symbol = {
+            str(row.get("symbol") or "").upper(): row
+            for row in rows
+            if isinstance(row, dict)
+        }
+        for symbol in entries:
+            row = rows_by_symbol.get(str(symbol).upper())
+            if row is None:
+                continue
+            flags = row.get("riskFlags") if isinstance(row.get("riskFlags"), list) else []
+            if not any(flag.get("type") == "delisting" for flag in flags if isinstance(flag, dict)):
+                raise ValueError(f"scheduled_delisting_flag_missing:{exchange}:{symbol}")
+
+
 def main() -> None:
     previous_payload = load_previous_payload()
     payload = make_payload(previous_payload)
+    validate_scheduled_delisting_flags(payload)
     DATA_JS_PATH.write_text("window.BOARD_DATA = " + json.dumps(payload, ensure_ascii=False) + ";\n", encoding="utf-8")
     SNAPSHOT_JSON_PATH.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     print(f"Saved {DATA_JS_PATH}")
