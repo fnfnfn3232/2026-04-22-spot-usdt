@@ -1053,7 +1053,7 @@ def fetch_binance() -> tuple[list[dict], dict[str, list[dict]]]:
                     str(scheduled_delisting.get("url") or ""),
                 )
             )
-        if "Monitoring" in tags:
+        if not risk_flags and "Monitoring" in tags:
             risk_flags.append(
                 make_risk_flag(
                     "monitoring",
@@ -1334,7 +1334,7 @@ def fetch_upbit() -> tuple[list[dict], dict[str, list[dict]]]:
         symbol = market.replace("KRW-", "")
         market_event = item.get("market_event") or {}
         risk_flags = scheduled_delisting_flags("upbit", symbol)
-        if bool(market_event.get("warning")):
+        if not risk_flags and bool(market_event.get("warning")):
             risk_flags.append(
                 make_risk_flag(
                     "warning",
