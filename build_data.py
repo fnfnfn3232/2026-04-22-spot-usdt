@@ -35,6 +35,11 @@ COINMARKETCAP_QUOTES_ENDPOINT = (
 COINMARKETCAP_SYMBOL_BATCH_SIZE = 100
 COINBASE_CURRENCIES_ENDPOINT = "https://api.exchange.coinbase.com/currencies"
 COINBASE_PRODUCT_STATS_ENDPOINT = "https://api.exchange.coinbase.com/products/stats"
+UPBIT_ANNOUNCEMENTS_ENDPOINT = "https://pub-info.upbit.com/api/v1/announcements"
+BITHUMB_RECENT_NOTICES_ENDPOINT = (
+    "https://gw.bithumb.com/feed/v2/customer-support/articles/notices/recent?count=20"
+)
+DELISTING_NOTICE_RETENTION_DAYS = 45
 BINANCE_USDM_FUTURES_INFO_ENDPOINT = "https://www.binance.com/fapi/v1/exchangeInfo"
 BINANCE_USDM_FUTURES_PRICE_ENDPOINT = "https://www.binance.com/fapi/v1/ticker/price"
 BINANCE_COINM_FUTURES_INFO_ENDPOINT = "https://www.binance.com/dapi/v1/exchangeInfo"
@@ -184,6 +189,7 @@ SCHEDULED_DELISTINGS = {
         },
     },
 }
+ACTIVE_SCHEDULED_DELISTINGS: dict[str, dict[str, dict]] = {}
 AMBIGUOUS_SYMBOLS_REQUIRE_NAME_OVERLAP = {
     "AI",
 }
@@ -219,13 +225,13 @@ def make_risk_flag(
 
 def scheduled_delisting_flags(exchange: str, symbol: str) -> list[dict]:
     entry = (
-        SCHEDULED_DELISTINGS.get(exchange, {})
+        ACTIVE_SCHEDULED_DELISTINGS.get(exchange, {})
         .get(str(symbol or "").strip().upper())
     )
     if not entry:
         return []
     try:
-        deadline = date.fromisoformat(str(entry.get("deadline") or ""))
+        deadline = date.fromisoformat(str(entry.get("expires") or entry.get("deadline") or ""))
     except ValueError:
         return []
     if datetime.now(SEOUL_TIMEZONE).date() > deadline:
@@ -239,6 +245,195 @@ def scheduled_delisting_flags(exchange: str, symbol: str) -> list[dict]:
             str(entry.get("url") or ""),
         )
     ]
+
+
+def parse_notice_datetime(value: object) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    normalized = text.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=SEOUL_TIMEZONE)
+    return parsed.astimezone(SEOUL_TIMEZONE)
+
+
+def extract_notice_symbols(title: str) -> list[str]:
+    symbols = []
+    for group in re.findall(r"\(([^()]*)\)", str(title or "")):
+        for symbol in re.findall(r"(?<![A-Z0-9])[A-Z][A-Z0-9]{1,14}(?![A-Z0-9])", group.upper()):
+            if symbol not in symbols:
+                symbols.append(symbol)
+    return symbols
+
+
+def extract_notice_deadline(title: str, published_at: datetime | None) -> date | None:
+    text = str(title or "")
+    full_date_matches = re.findall(r"(20\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})", text)
+    if full_date_matches:
+        year, month, day = full_date_matches[-1]
+        try:
+            return date(int(year), int(month), int(day))
+        except ValueError:
+            return None
+    short_date_matches = re.findall(r"(?<!\d)(\d{1,2})[.\-/](\d{1,2})(?!\d)", text)
+    if not short_date_matches or published_at is None:
+        return None
+    month, day = short_date_matches[-1]
+    try:
+        candidate = date(published_at.year, int(month), int(day))
+    except ValueError:
+        return None
+    if candidate < published_at.date() - timedelta(days=14):
+        try:
+            candidate = candidate.replace(year=candidate.year + 1)
+        except ValueError:
+            return None
+    return candidate
+
+
+def make_delisting_entry(
+    *,
+    title: str,
+    url: str,
+    published_at: datetime | None,
+    deadline: date | None,
+) -> dict:
+    observed = datetime.now(SEOUL_TIMEZONE)
+    expires = deadline or ((published_at or observed).date() + timedelta(days=DELISTING_NOTICE_RETENTION_DAYS))
+    detail = (
+        f"거래지원 종료 {deadline.isoformat()} 예정"
+        if deadline
+        else "거래지원 종료 예정 (공식 공지 확인)"
+    )
+    return {
+        "deadline": deadline.isoformat() if deadline else "",
+        "expires": expires.isoformat(),
+        "detail": detail,
+        "url": url,
+        "title": title,
+        "observedAt": int(observed.timestamp()),
+    }
+
+
+def fetch_upbit_scheduled_delistings() -> dict[str, dict]:
+    scheduled: dict[str, dict] = {}
+    for page in range(1, 4):
+        query = urllib.parse.urlencode(
+            {"os": "web", "page": page, "per_page": 20, "category": "trade"}
+        )
+        payload = fetch_json(f"{UPBIT_ANNOUNCEMENTS_ENDPOINT}?{query}", retries=2, pause=0.5)
+        data = payload.get("data") if isinstance(payload, dict) else None
+        notices = data.get("notices") if isinstance(data, dict) else None
+        if not isinstance(notices, list):
+            continue
+        for notice in notices:
+            if not isinstance(notice, dict):
+                continue
+            title = str(notice.get("title") or "").strip()
+            if "거래지원 종료" not in title:
+                continue
+            symbols = extract_notice_symbols(title)
+            if any(term in title for term in ("철회", "취소")):
+                for symbol in symbols:
+                    scheduled[symbol] = {"cancelled": True}
+                continue
+            published_at = parse_notice_datetime(notice.get("listed_at"))
+            deadline = extract_notice_deadline(title, published_at)
+            notice_uuid = str(notice.get("uuid") or "").strip()
+            url = (
+                f"https://www.upbit.com/service_center/notice?id={urllib.parse.quote(notice_uuid)}&view=share"
+                if notice_uuid
+                else "https://www.upbit.com/service_center/notice"
+            )
+            entry = make_delisting_entry(
+                title=title,
+                url=url,
+                published_at=published_at,
+                deadline=deadline,
+            )
+            for symbol in symbols:
+                scheduled[symbol] = entry.copy()
+    return scheduled
+
+
+def fetch_bithumb_scheduled_delistings() -> dict[str, dict]:
+    payload = fetch_json(BITHUMB_RECENT_NOTICES_ENDPOINT, retries=2, pause=0.5)
+    notices = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(notices, list):
+        return {}
+    scheduled: dict[str, dict] = {}
+    for notice in notices:
+        if not isinstance(notice, dict):
+            continue
+        title = str(notice.get("title") or "").strip()
+        category = str(notice.get("categoryName1") or "").strip()
+        if category != "거래지원종료" and "거래지원 종료" not in title:
+            continue
+        symbols = extract_notice_symbols(title)
+        if any(term in title for term in ("철회", "취소")):
+            for symbol in symbols:
+                scheduled[symbol] = {"cancelled": True}
+            continue
+        published_at = parse_notice_datetime(notice.get("publicationDateTime"))
+        deadline = extract_notice_deadline(title, published_at)
+        url = str(notice.get("pcUrl") or notice.get("mobileUrl") or "").strip()
+        if url.startswith("/"):
+            url = f"https://feed.bithumb.com{url}"
+        entry = make_delisting_entry(
+            title=title,
+            url=url,
+            published_at=published_at,
+            deadline=deadline,
+        )
+        for symbol in symbols:
+            scheduled[symbol] = entry.copy()
+    return scheduled
+
+
+def refresh_scheduled_delistings(
+    previous_payload: dict | None,
+    refresh_issues: dict[str, str],
+) -> None:
+    global ACTIVE_SCHEDULED_DELISTINGS
+    today = datetime.now(SEOUL_TIMEZONE).date()
+    active: dict[str, dict[str, dict]] = {
+        exchange: {} for exchange in ("upbit", "bithumb", "binance", "coinbase")
+    }
+    sources = [SCHEDULED_DELISTINGS, (previous_payload or {}).get("scheduledDelistings") or {}]
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        for exchange, entries in source.items():
+            if exchange not in active or not isinstance(entries, dict):
+                continue
+            for symbol, entry in entries.items():
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    expires = date.fromisoformat(str(entry.get("expires") or entry.get("deadline") or ""))
+                except ValueError:
+                    continue
+                if expires >= today:
+                    active[exchange][str(symbol).upper()] = dict(entry)
+
+    for exchange, fetcher in (
+        ("upbit", fetch_upbit_scheduled_delistings),
+        ("bithumb", fetch_bithumb_scheduled_delistings),
+        ("binance", fetch_binance_scheduled_delistings),
+    ):
+        try:
+            for symbol, entry in fetcher().items():
+                if entry.get("cancelled"):
+                    active[exchange].pop(symbol, None)
+                else:
+                    active[exchange][symbol] = entry
+        except Exception as error:  # noqa: BLE001
+            refresh_issues[f"{exchange}_notices"] = f"fetch_failed:{error}"
+    ACTIVE_SCHEDULED_DELISTINGS = active
 
 
 def fetch_binance_scheduled_delistings() -> dict[str, dict]:
@@ -283,8 +478,12 @@ def fetch_binance_scheduled_delistings() -> dict[str, dict]:
         )
         for symbol in re.findall(r"[A-Z0-9]+", match.group(1).upper()):
             scheduled[symbol] = {
+                "deadline": deadline.isoformat(),
+                "expires": deadline.isoformat(),
                 "detail": f"현물 거래지원 종료 {deadline.isoformat()} 예정",
                 "url": detail_url,
+                "title": title,
+                "observedAt": int(datetime.now(SEOUL_TIMEZONE).timestamp()),
             }
     return scheduled
 
@@ -1013,10 +1212,6 @@ def is_binance_bstock(item: dict) -> bool:
 
 def fetch_binance() -> tuple[list[dict], dict[str, list[dict]]]:
     payload = fetch_json("https://www.binance.com/bapi/apex/v1/public/apex/marketing/symbol/list")
-    try:
-        scheduled_delistings = fetch_binance_scheduled_delistings()
-    except Exception:  # noqa: BLE001
-        scheduled_delistings = {}
     rows: list[dict] = []
     lookup: dict[str, list[dict]] = {}
     for item in payload.get("data", []):  # type: ignore[union-attr]
@@ -1041,18 +1236,7 @@ def fetch_binance() -> tuple[list[dict], dict[str, list[dict]]]:
         fdv_krw = fdv_usd * FX_USD_KRW if fdv_usd is not None else None
         circulating_ratio = compute_circulating_ratio(circulating_supply, total_supply)
         tags = [str(tag) for tag in (item.get("tags") or [])]
-        risk_flags = []
-        scheduled_delisting = scheduled_delistings.get(str(symbol).upper())
-        if scheduled_delisting:
-            risk_flags.append(
-                make_risk_flag(
-                    "delisting",
-                    "상폐예정",
-                    str(scheduled_delisting.get("detail") or "현물 거래지원 종료 예정"),
-                    "binance_official_announcement",
-                    str(scheduled_delisting.get("url") or ""),
-                )
-            )
+        risk_flags = scheduled_delisting_flags("binance", symbol)
         if not risk_flags and "Monitoring" in tags:
             risk_flags.append(
                 make_risk_flag(
@@ -1689,6 +1873,16 @@ def fetch_coinbase() -> list[dict]:
         display_name = "Gensyn" if base_currency == GENSYN_SYMBOL else base_currency
         currency_name = currency_name_map.get(base_currency, display_name)
         risk_flags = scheduled_delisting_flags("coinbase", base_currency)
+        if not risk_flags and any(bool(item.get(key)) for key in ("cancel_only", "limit_only", "post_only")):
+            risk_flags.append(
+                make_risk_flag(
+                    "restriction",
+                    "거래제한",
+                    "코인베이스 공식 상품 API에서 주문 제한 상태로 확인됨",
+                    "coinbase_exchange_products",
+                    "https://api.exchange.coinbase.com/products",
+                )
+            )
 
         row = {
                 "symbol": base_currency,
@@ -3770,6 +3964,7 @@ def build_defillama_rankings(
 def make_payload(previous_payload: dict | None = None) -> dict:
     refresh_fx_usd_krw(previous_payload)
     refresh_issues: dict[str, str] = {}
+    refresh_scheduled_delistings(previous_payload, refresh_issues)
 
     try:
         binance_rows, _binance_lookup = fetch_binance()
@@ -4099,6 +4294,7 @@ def make_payload(previous_payload: dict | None = None) -> dict:
         "news": news_payload,
         "stats": stats,
         "futuresStats": futures_stats,
+        "scheduledDelistings": ACTIVE_SCHEDULED_DELISTINGS,
         "changes": build_changes(boards, previous_payload),
         "notes": {
             "binance": "binance_exact_market_cap",
